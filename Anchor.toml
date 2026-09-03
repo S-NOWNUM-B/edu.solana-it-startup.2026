@@ -7,6 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
+escrow = "5yumooWcYbtWgi5KwiJnbMkqsMJjhDvw3JsJGgY25hg2"
 solana_level_1_token_starter = "3pX5NKLru1UBDVckynWQxsgnJeUN3N1viy36Gk9TSn8d"
 
 [provider]

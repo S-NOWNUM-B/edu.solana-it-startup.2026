@@ -156,7 +156,7 @@ Account constraints:
 
 Версии сохранены: Anchor CLI/crates `1.1.2`, Solana CLI `3.1.10`, Rust `1.89.0`, LiteSVM `0.10.0`. Новых зависимостей нет, `Cargo.lock` не изменён.
 
-Команды из корня проекта (**macOS zsh/bash; Windows WSL/Ubuntu bash**):
+Команды из корня проекта:
 
 ```bash
 anchor build
@@ -169,4 +169,65 @@ cargo fmt --all -- --check
 
 Уточнение к исходной инструкции сборки: в Anchor CLI `1.1.2` несовпадение автоматически созданного локального program keypair с `declare_id!` выводит предупреждение, но не останавливает `anchor build`. Для LiteSVM флаг `--ignore-keys` необязателен: тест загружает программу под объявленным ID без деплоя и использования keypair. Ключи и секреты не опубликованы; дополнительно исключены `.env`, `.env.*`, `*.pem` и `*.key`.
 
-Ссылка для сдачи: [публичная ветка `task/02-burn`](https://github.com/S-NOWNUM-B/edu.solana-it-startup.2026/tree/task/02-burn).
+## Результат задания 3 — ветка `task/03-escrow`
+
+Добавлена отдельная Anchor-программа `programs/escrow`. Предыдущая токен-программа и её тесты не изменены. Стек сохранён: Anchor CLI/crates `1.1.2`, Solana CLI `3.1.10`, Rust `1.89.0`, LiteSVM `0.10.0`. В `Cargo.lock` добавлен только локальный пакет `escrow`; версии существующих зависимостей не изменились. TypeScript-код не нужен.
+
+### Архитектура
+
+- `src/state.rs`: `EscrowState` хранит sender, receiver, mint, amount, `deal_id: u64`, bump и статус. PDA: `[b"escrow", sender, deal_id.to_le_bytes()]`; sender может создавать несколько независимых сделок, одинаковый ID у разных sender допустим.
+- Vault — отдельный Token-2022 account с PDA `[b"vault", escrow_state]`, mint сделки и authority = PDA state. Vault создаётся при `initialize` и не разделяется между сделками.
+- `DealReceipt` — PDA `[b"used", sender, deal_id.to_le_bytes()]`, постоянная отметка использования ID и текущего/итогового статуса. Закрытие state не позволяет повторно открыть сделку с тем же ID.
+- `src/instructions.rs`: типизированные аккаунты, `Signer`, `has_one`, проверка seeds/stored bump и статуса, `token::mint/authority/token_program`, ATA constraints. `Interface<TokenInterface>` дополнительно ограничен адресом Token-2022: legacy Token Program не допускается. Критичных `UncheckedAccount` нет.
+- `src/lib.rs`: четыре инструкции и переходы состояния. `src/token_cpi.rs`: переводы из vault через `token_interface::transfer_checked` с PDA signer seeds и закрытие через `token_interface::close_account`. Decimals берутся из mint. В `release` крупные account-обёртки помещены в `Box`, чтобы не превышать SBF-стек 4 KiB.
+
+### State machine
+
+| Инструкция | До → после | Действие |
+| --- | --- | --- |
+| `initialize(deal_id, amount)` | Отсутствует → Created | Sender оплачивает создание state, receipt и vault; amount > 0, receiver отличается от sender |
+| `deposit()` | Created → Funded | Только sender; ровно сохранённый amount переводится из его token account в vault |
+| `release()` | Funded → Released | Только sender; ровно amount переводится в ATA сохранённого receiver, излишек vault — в ATA sender |
+| `cancel()` | Created / Funded → Cancelled | Только sender; весь баланс vault, включая посторонние поступления, возвращается в ATA sender |
+
+После `release/cancel` пустой vault закрывается через SPL CPI, state — через `close = sender`. Их rent полностью возвращается sender. Терминальный статус остаётся в receipt. Повторное завершение отклоняется, поскольку state уже закрыт; повторное создание ID — поскольку receipt уже существует.
+
+`deposit`, `release` и `cancel` не принимают сумму от клиента: amount фиксируется при создании. Прямое пополнение vault через SPL само по себе не меняет Created на Funded. Sender и receiver представлены обычными кошельками; receiver — `SystemAccount`, без требования его подписи. Перед `release` должны существовать ATA receiver и sender, перед `cancel` — ATA sender. Их можно создать стандартной Associated Token Program отдельной инструкцией, в том числе в той же транзакции. Внутри escrow не используется `init_if_needed`.
+
+### Архитектурные решения и ограничения
+
+- **Защита от повторного ID после закрытия.** Полностью удалить все следы сделки и одновременно запретить повторное использование произвольного ID невозможно. Вместо незакрытого state или ограничения ID монотонным счётчиком выбран маленький receipt: 8 байт discriminator + 1 байт статуса. Его rent остаётся заблокированным; state и vault закрываются по условию. Это осознанная плата за постоянную защиту от повторов.
+- **Ограниченный набор mint.** Принимается только базовый Token-2022 mint без расширений и freeze authority. Так исключаются transfer fees, hooks, permanent delegate и заморозка, которые могут нарушить точную сумму перевода или доступность возврата. Это не универсальная поддержка расширений Token-2022; расширять набор следует отдельно вместе с проверками соответствующих угроз.
+- **Посторонние поступления.** Требование `vault.amount == amount` позволило бы постороннему заблокировать закрытие переводом одного токена. Поэтому receiver получает только согласованный amount, а излишек возвращается sender. Поступление в чужой vault следует считать безвозвратным пожертвованием sender.
+
+### Threat model и ошибки
+
+Недоверенный клиент может подставлять любые аккаунты, менять метаданные подписей и порядок вызовов. Защита выполняется в программе:
+
+- Нет подписи — `AccountNotSigner`; другой sender — `UnauthorizedSender`; sender = receiver — `SenderEqualsReceiver`; нулевая сумма — `AmountMustBePositive`.
+- Подмена mint/receiver — `InvalidMint` / `InvalidReceiver`. Подмена state, receipt или vault — PDA constraints; mint, authority и программа-владелец token accounts проверяются отдельно. Выплата и возврат требуют канонические ATA нужного владельца.
+- Повторный deposit, release до deposit или несовместимый статус — `InvalidStatus`. После закрытия — `AccountNotInitialized`. Повторный ID отклоняет `init` существующего receipt (System Program `AccountAlreadyInUse`).
+- Недостаточно токенов у sender — SPL `InsufficientFunds`; баланс Funded-vault меньше amount — `InvalidVaultBalance`. Неподдерживаемый mint — `UnsupportedMint`; другая SPL-программа или произвольная программа отклоняются constraints/типом `Interface`.
+- Ошибка любого CPI откатывает всю инструкцию/транзакцию, включая предыдущие переводы, закрытия, rent и смену статуса. Комиссия fee payer может быть списана и при отказе.
+
+Границы модели: решение управляется sender, не арбитром; receiver не может самостоятельно забрать средства или отменить сделку, срок исполнения не задан. Upgrade authority программы, компрометация ключа sender и доступность сети вне этих гарантий. Mainnet-аудит не проводился. Локальные keypair остаются в игнорируемом `target/`, ключи тестов генерируются в памяти; секретов в исходниках нет.
+
+### Команды и результаты тестов
+
+Из корня workspace после установки зафиксированных версий (zsh/bash):
+
+```bash
+anchor build
+cargo test
+cargo test --workspace --locked
+cargo fmt --all -- --check
+cargo clippy -p escrow --all-targets --locked -- -D warnings
+```
+
+`anchor build` собирает обе программы и IDL. До тестов нужен свежий `target/deploy/escrow.so`; RPC, validator и кошелёк не требуются. Только escrow-тесты можно запустить командой `cargo test -p escrow --locked` (zsh/bash).
+
+Проверено в отдельной чистой копии исходников без `target/` и program keypair: `anchor build`, `cargo test`, форматирование и строгий Clippy новой программы проходят. Дополнительно проходит `cargo test --workspace --locked`; lockfile при проверках не меняется.
+
+Добавлены **36 escrow-тестов**; вместе с предыдущими 54 токен-тестами — **90 интеграционных тестов и 2 unit-теста `test_id`**. Покрыты release/cancel end-to-end, отмена Created, проверка полей state и vault, точные балансы и supply, закрытие аккаунтов и возврат rent. Негативные сценарии включают все перечисленные выше ошибки, повтор ID до/после завершения, изоляцию сделок, подмену vault/receipt и неверный bump, неподдерживаемые mint, посторонние поступления, откат успешного первого CPI при отказе второго и откат release при ошибке следующей инструкции транзакции.
+
+Каждый негативный тест сравнивает полное состояние задействованных аккаунтов до/после отказа, включая sender, receipt и ещё не созданные PDA; исключён только fee payer. Тесты повреждённых bump/owner/balance и заморозки используют явно обозначенные искусственные LiteSVM-фикстуры — в сети посторонний не может напрямую переписать эти поля.
