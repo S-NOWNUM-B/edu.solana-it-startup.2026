@@ -156,7 +156,7 @@ Account constraints:
 
 Версии сохранены: Anchor CLI/crates `1.1.2`, Solana CLI `3.1.10`, Rust `1.89.0`, LiteSVM `0.10.0`. Новых зависимостей нет, `Cargo.lock` не изменён.
 
-Команды из корня проекта (**macOS zsh/bash; Windows WSL/Ubuntu bash**):
+Команды из корня проекта:
 
 ```bash
 anchor build
