@@ -21,7 +21,7 @@ fn program_bytes() -> &'static [u8] {
             .join("../../target/deploy/solana_level_1_token_starter.so");
         fs::read(&path).unwrap_or_else(|error| {
             panic!(
-                "Run `anchor build --ignore-keys` before tests. Cannot read {}: {error}",
+                "Run `anchor build` before tests. Cannot read {}: {error}",
                 path.display()
             )
         })
@@ -167,6 +167,24 @@ impl TestContext {
             .expect("mint_tokens must succeed");
     }
 
+    pub fn burn_instruction(
+        &self,
+        authority: Pubkey,
+        mint: Pubkey,
+        source: Pubkey,
+        amount: u64,
+    ) -> Instruction {
+        instruction(
+            accounts::BurnTokens {
+                authority,
+                mint,
+                source,
+                token_program: self.token_program,
+            },
+            instruction::BurnTokens { amount },
+        )
+    }
+
     pub fn mint(&self, address: Pubkey) -> Mint {
         let account = self.svm.get_account(&address).expect("mint must exist");
         assert_eq!(account.owner, self.token_program);
@@ -238,11 +256,15 @@ pub struct FundedToken {
 
 impl FundedToken {
     pub fn new(token_program: Pubkey) -> Self {
+        Self::with_decimals(token_program, DECIMALS)
+    }
+
+    pub fn with_decimals(token_program: Pubkey, decimals: u8) -> Self {
         let mut context = TestContext::new(token_program);
         let mint_authority = Keypair::new();
         let owner = Keypair::new();
         let recipient = Keypair::new();
-        let mint = context.create_mint(&mint_authority, DECIMALS);
+        let mint = context.create_mint(&mint_authority, decimals);
         let source = context.create_token_account(owner.pubkey(), mint);
         let destination = context.create_token_account(recipient.pubkey(), mint);
         context.mint_tokens(&mint_authority, mint, source, INITIAL_SUPPLY);

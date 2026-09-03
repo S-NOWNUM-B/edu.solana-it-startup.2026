@@ -3,3 +3,7 @@
 /.keys
 **/*.json
 !package.json
+.env
+.env.*
+*.pem
+*.key

@@ -1,134 +1,118 @@
 # Solana Level 1 Token Starter
 
-Учебный starter для итоговых заданий первого уровня курса Superteam KZ. Он показывает современный минимальный каркас токен-программы без привязки к legacy JavaScript SDK.
+Учебная Anchor-программа Superteam KZ: создание mint и ATA, выпуск, перевод и сжигание токенов. Программа работает через `anchor_spl::token_interface` с Token Program и Token-2022. Rust-тесты выполняются локально в LiteSVM без RPC, validator, SOL и файла кошелька.
 
-> Это исходная точка, а не готовое решение. Не работайте напрямую в ветке `main`: для каждого задания создавайте отдельную ветку.
+## Сдача задания 2
 
-## Как получить проект через GitHub
-
-Если вы ещё не работали с GitHub:
-
-1. Нажмите **Fork** в правом верхнем углу страницы и создайте копию репозитория в своём аккаунте.
-2. На странице своей копии нажмите **Code** и скопируйте HTTPS-ссылку.
-3. Выполните в терминале:
-
-   ```bash
-   git clone <ссылка-на-ваш-fork>
-   cd education
-   git checkout -b task/01-tests
-   ```
-
-4. После выполнения задания сохраните изменения:
-
-   ```bash
-   git add .
-   git commit -m "Complete task 01 tests"
-   git push -u origin task/01-tests
-   ```
-
-5. Отправьте преподавателю ссылку на ветку `task/01-tests` или на последний commit.
-
-Не знаете Git? Для этих заданий достаточно операций `clone`, `checkout -b`, `add`, `commit` и `push`; команды выше можно использовать как готовый сценарий.
-
-## Задание 1 — покрыть токен-программу тестами
-
-В проекте уже есть минимальный LiteSVM-тест `create_token`. Его нужно усилить и добавить тесты остальных реализованных инструкций.
-
-### Что нужно сделать
-
-- В тесте `create_token` проверить `decimals`, mint authority, supply и владельца mint, а не только наличие аккаунта.
-- Покрыть `create_token_account`: проверить владельца token account, mint и token program.
-- Покрыть `mint_tokens`: проверить изменение баланса получателя и общего supply.
-- Покрыть `transfer_tokens`: проверить оба баланса и неизменность общего supply.
-- Добавить негативные сценарии: нулевая сумма, неверный authority, другой mint и одинаковые source/destination.
-- Обновить README в своём fork: указать версии, команды запуска и кратко описать добавленные тесты.
-
-### Готовность задания
-
-Чистый checkout вашей ветки должен проходить:
-
-```bash
-anchor build --ignore-keys
-cargo test --workspace --locked
-```
-
-Флаг `--ignore-keys` нужен только потому, что локальный program keypair намеренно не хранится в учебном репозитории. Для собственного devnet-деплоя создайте keypair локально и синхронизируйте ID командой `anchor keys sync`, но не добавляйте файл keypair в Git.
-
-Не публикуйте keypair, seed phrase, приватные ключи или `.env` с секретами.
-
-Следующие задания выполняются в ветках `task/02-burn` и `task/03-escrow`. Их условия выдаются на учебной платформе; готовой реализации в starter нет.
+- Репозиторий: [S-NOWNUM-B/edu.solana-it-startup.2026](https://github.com/S-NOWNUM-B/edu.solana-it-startup.2026).
+- Ветка: [`task/02-burn`](https://github.com/S-NOWNUM-B/edu.solana-it-startup.2026/tree/task/02-burn).
+- Основа: `task/01-tests`, commit `e982692` — тесты первого задания сохранены.
+- Добавлена инструкция `burn_tokens(amount: u64)`, строгие account constraints и 18 новых интеграционных тестов. Escrow в эту работу не входит.
 
 ## Зафиксированный стек
 
-- Anchor CLI и crates: `1.1.2`
-- Solana CLI: `3.1.10`
-- Rust: `1.89.0`
-- тесты программ: Rust + LiteSVM `0.10.0`
-- токены: `anchor_spl::token_interface`, совместимый с Token Program и Token-2022
-- рекомендуемый клиент для нового TypeScript-кода: `@solana/kit`
+| Инструмент | Версия | Где зафиксирована |
+| --- | --- | --- |
+| Anchor CLI и crates | `1.1.2` | `Anchor.toml`, точные зависимости `=1.1.2` |
+| Solana CLI | `3.1.10` | `Anchor.toml` |
+| Rust | `1.89.0` | `rust-toolchain.toml` |
+| LiteSVM | `0.10.0` | dev-dependency `=0.10.0` |
 
-`@solana/web3.js` относится к legacy-стеку. TypeScript-клиент Anchor `@anchor-lang/core` по-прежнему зависит от `@solana/web3.js` v1, поэтому в этом starter тесты написаны на Rust и LiteSVM. Для нового клиентского приложения используйте `@solana/kit`, если задание явно не требует другого.
+Новых зависимостей нет; `Cargo.lock` сохранён. Для нового TypeScript-клиента предполагается `@solana/kit`; JavaScript-клиент и `@solana/web3.js` в задании не используются.
 
-Оригинальный Token Program остается рабочим и широко используется. Для новых токенов в учебных заданиях используйте Token-2022, а program-код пишите через `token_interface`, чтобы сохранить совместимость с обоими Token Program.
+## Сборка и тестирование с чистого checkout
 
-## Что уже реализовано
-
-- создание mint с выбранной token-программой;
-- создание associated token account;
-- выпуск токенов через `mint_to`;
-- перевод через `transfer_checked`;
-- проверки положительной суммы, полномочий, mint и token program на уровне Anchor accounts constraints;
-- один эталонный LiteSVM-тест создания Token-2022 mint.
-
-Функции `burn_tokens` и Escrow намеренно отсутствуют: студент реализует их в следующих заданиях.
-
-## Быстрый старт
-
-1. Установите версии из раздела «Зафиксированный стек» через AVM, rustup и официальный Solana installer.
-2. Для локального прохождения заданий выполните `anchor build --ignore-keys`. Для собственного devnet-деплоя создайте локальный program keypair и выполните `anchor keys sync`. Не коммитьте keypair или seed phrase.
-3. После первой сборки выполните `cargo test --workspace --locked`.
-4. Разрабатывайте каждое задание в отдельной ветке: `task/01-tests`, `task/02-burn`, `task/03-escrow`.
-
-Тест загружает собранный файл `target/deploy/solana_level_1_token_starter.so`, поэтому перед первым `cargo test` нужен `anchor build --ignore-keys`.
-
-## Правила сдачи
-
-- сдавайте публичную ссылку на GitHub-репозиторий и указывайте ветку или commit SHA;
-- добавьте в README команды сборки и тестирования, ожидаемый результат и краткое описание архитектуры;
-- не добавляйте в репозиторий private keys, seed phrases, `.env` с секретами или файлы keypair;
-- не используйте `@solana/web3.js` в новом клиентском коде;
-- для переводов токенов используйте `transfer_checked`, а не unchecked transfer;
-- не подменяйте проверки полномочий только клиентской логикой: все критичные инварианты должны проверяться программой.
-
-## Что считается современным решением
-
-Современность здесь определяется не только номером версии. Решение должно использовать строгие account constraints, проверяемые state transitions, Token-2022 для нового токена, `token_interface` для совместимости, `transfer_checked` для переводов и воспроизводимые LiteSVM-тесты. Если официальные стабильные рекомендации Solana или Anchor изменятся, студент должен зафиксировать выбранные версии и объяснить отклонение в README.
-
-## Результат задания 1 — ветка `task/01-tests`
-
-Исходные условия выше сохранены. Вместо минимального `tests/create_token.rs` добавлены `programs/solana-level-1-token-starter/tests/token_program.rs` и общий модуль `tests/common/mod.rs`: 18 сценариев, каждый отдельно для Token-2022 и Token Program (36 интеграционных тестов).
-
-Версии сохранены: Anchor CLI/crates `1.1.2`, Solana CLI `3.1.10`, Rust `1.89.0`, LiteSVM `0.10.0`. Новых зависимостей нет, `Cargo.lock` не изменён.
-
-Команды из корня проекта после установки этих версий:
+Предварительно установите указанные выше версии Rust, Solana CLI и Anchor CLI и добавьте их в `PATH`. Команды ниже выполняются в **macOS zsh/bash** или **Windows WSL/Ubuntu bash**:
 
 ```bash
-anchor build --ignore-keys
+git clone --branch task/02-burn https://github.com/S-NOWNUM-B/edu.solana-it-startup.2026.git
+cd edu.solana-it-startup.2026
+rustc --version
+solana --version
+anchor --version
+anchor build
+cargo test
+```
+
+`anchor build` создаёт `target/deploy/solana_level_1_token_starter.so` и IDL. `cargo test` загружает этот `.so`, поэтому сборка должна предшествовать тестам, в том числе после изменения кода программы. Ожидаемый результат: **54 интеграционных теста и unit-тест `test_id`**, без падений.
+
+Дополнительные проверки (**macOS zsh/bash; Windows WSL/Ubuntu bash**):
+
+```bash
 cargo test --workspace --locked
 cargo fmt --all -- --check
 ```
 
-Ожидаемый результат: собраны `.so` и IDL; проходят 36 интеграционных тестов и стандартный unit-тест `test_id`, без падений; форматирование проходит проверку.
+### Program ID и локальные ключи
 
-Покрытие тестами:
+Program ID в `declare_id!` и `Anchor.toml` — публичный адрес, не секрет. Program keypair не хранится в Git. Anchor создаёт локальный keypair в игнорируемом `target/deploy/`; в Anchor CLI `1.1.2` несовпадение его адреса с `declare_id!` выводит предупреждение, но не останавливает сборку. Это поведение видно в [исходнике CLI версии 1.1.2](https://github.com/otter-sec/anchor/blob/v1.1.2/cli/src/lib.rs#L2100).
 
-- `create_token`: decimals 0/6/9, mint authority, freeze authority, нулевой supply, инициализация и token-программа — владелец mint.
-- `create_token_account`: создание ATA, owner, mint, token-программа, нулевой баланс и инициализация.
-- `mint_tokens`: первоначальный и повторный выпуск, точные изменения баланса и supply.
-- `transfer_tokens`: оба баланса, перевод всего остатка, сохранение supply; получатель имеет ненулевой начальный баланс.
-- Обязательные отказы: нулевая сумма, неверный authority, другой mint, одинаковые source/destination. Дополнительно: отсутствие подписи authority, подмена token-программы и недостаточный баланс.
-- При каждом отказе проверяются конкретная ошибка и неизменность mint/token accounts целиком. Payer исключён из сравнения из-за комиссии.
+Для локальных LiteSVM-тестов это безопасно: тест загружает `.so` под объявленным `ID`, не использует локальный program keypair и не выполняет деплой. При желании предупреждение можно убрать командой `anchor build --ignore-keys` (**macOS zsh/bash; Windows WSL/Ubuntu bash**); для прохождения задания флаг не требуется.
 
-Архитектура: `src/lib.rs` объявляет четыре инструкции, `src/instructions/` содержит account constraints и CPI через `token_interface`; перевод использует `transfer_checked`. Тесты создают mint и ATA через саму программу в отдельной LiteSVM для каждого запуска. Ключи генерируются в памяти; RPC, validator и файл кошелька не нужны. Код программы не изменён.
+Для собственного devnet-деплоя сначала создайте локальные ключи и выполните `anchor keys sync`, затем пересоберите программу. Эта команда меняет публичные ID в исходниках и конфигурации, поэтому для обычных тестов она не нужна. Никогда не публикуйте keypair, seed phrase или приватные ключи.
 
-Особенности Anchor 1.1.2: одинаковые изменяемые аккаунты отклоняются с `ConstraintDuplicateMutableAccount` (2040) раньше пользовательской ошибки `SourceEqualsDestination`. Подмена token-программы при создании ATA даёт `IncorrectProgramId` из CPI, при mint/transfer — `ConstraintMintTokenProgram` (2022).
+## Архитектура и `burn_tokens`
+
+`src/lib.rs` объявляет пять инструкций; каждый модуль в `src/instructions/` содержит структуру аккаунтов и обработчик. Новый `burn_tokens.rs` использует CPI `token_interface::burn_checked`, передавая `amount` и **decimals из проверенного mint**, а не от клиента. Сумма задаётся в минимальных единицах токена: например, `1_000_000` при decimals `6` — один токен.
+
+### Account constraints
+
+| Аккаунт | Тип и проверки | Назначение |
+| --- | --- | --- |
+| `authority` | `Signer<'info>` | Требует подпись владельца `source` |
+| `mint` | `InterfaceAccount<Mint>`, `mut`, `mint::token_program = token_program` | Проверяет тип mint и программу-владельца; разрешает уменьшить supply |
+| `source` | `InterfaceAccount<TokenAccount>`, `mut`, `token::mint = mint`, `token::authority = authority`, `token::token_program = token_program` | Проверяет тип, связь с mint, владельца токенов и программу-владельца; разрешает уменьшить баланс |
+| `token_program` | `Interface<TokenInterface>` | Принимает только исполняемую Token Program или Token-2022 |
+
+`InterfaceAccount` допускает обе SPL-программы, поэтому одного типа недостаточно: constraints дополнительно требуют, чтобы **mint и source принадлежали именно переданной token program**. Владение аккаунтом программой и право authority распоряжаться токенами — разные проверки.
+
+Перед CPI обработчик проверяет `amount > 0` через `require!`. Недостаточный баланс отклоняет SPL-программа внутри `burn_checked`. Критичные аккаунты новой инструкции не используют `UncheckedAccount`; клиентским проверкам программа не доверяет.
+
+Сжигать разрешено только владельцу `source`. Mint authority, delegate и multisig не заменяют его в этой инструкции. При успехе баланс и supply уменьшаются ровно на `amount`; остальные token accounts не затрагиваются. При отказе Solana откатывает изменения транзакции, включая CPI; комиссия payer при этом может списаться.
+
+### Ожидаемые ошибки
+
+| Сценарий | Ошибка |
+| --- | --- |
+| Нулевая сумма с корректными аккаунтами | `TokenStarterError::AmountMustBePositive` — `Amount must be greater than zero` |
+| Authority не владеет source | Anchor `ConstraintTokenOwner` |
+| Нет подписи authority | Anchor `AccountNotSigner` |
+| Source относится к другому mint | Anchor `ConstraintTokenMint` |
+| Mint принадлежит другой token program | Anchor `ConstraintMintTokenProgram` |
+| Source принадлежит другой token program | Anchor `ConstraintTokenTokenProgram` |
+| Вместо token program передана System Program | Anchor `InvalidProgramId` |
+| Баланс source меньше amount | SPL `TokenError::InsufficientFunds` |
+
+Anchor проверяет аккаунты до вызова обработчика, поэтому при одновременно неверных аккаунтах и нулевой сумме первым может быть отказ account constraint.
+
+## Тестовое покрытие
+
+Общие помощники находятся в `tests/common/mod.rs`, сценарии — в `tests/token_program.rs`. Каждый сценарий запускается отдельно для Token Program и Token-2022; у каждого запуска собственная LiteSVM. Mint, ATA и начальные балансы создаются через инструкции самой программы. Ключи тестов генерируются в памяти.
+
+### Задание 1: 18 сценариев × 2 программы = 36 тестов
+
+- Создание mint: decimals `0/6/9`, mint/freeze authority, supply, инициализация и программа-владелец.
+- Создание ATA: owner, mint, token program, нулевой баланс и инициализация.
+- Выпуск: первоначальный и повторный mint, изменения баланса и supply.
+- Перевод: оба баланса, перевод всего остатка, неизменность supply.
+- Отказы: нулевая сумма, неверный authority, отсутствие подписи, другой mint, одинаковые source/destination, подмена token program, недостаточный баланс.
+
+### Задание 2: 9 сценариев × 2 программы = 18 тестов
+
+- Успешное частичное сжигание, затем весь остаток source при decimals `0/6/9`: после каждой операции баланс и supply уменьшаются на одинаковый `amount`; чужой token account с ненулевым балансом остаётся неизменным.
+- Нулевая сумма отклоняется точной пользовательской ошибкой программы.
+- Mint authority не может сжечь токены другого владельца.
+- Снятый `is_signer` проверяет отказ самой программы, а не только клиентского конструктора транзакции.
+- Подмена mint отклоняется; проверяется также неизменность второго mint.
+- Подмена token program проверяет соответствие владельца mint.
+- Искусственная фикстура с заменённой программой-владельцем source изолированно проверяет `token::token_program`, сохраняя правильные поля mint и authority. Это не моделирование доступной пользователю смены владельца аккаунта в сети.
+- Произвольная исполняемая программа вместо SPL отклоняется типом `Interface<TokenInterface>`.
+- Недостаточный баланс отклоняется даже при достаточном общем supply: токены на чужом аккаунте нельзя использовать для сжигания.
+
+**Каждый негативный тест** проверяет конкретный код ошибки и полное равенство mint и token accounts до/после транзакции, включая supply и балансы. Payer исключён из сравнения из-за комиссии.
+
+## Безопасность
+
+`target/`, `.anchor/`, `.keys/`, JSON-keypair, `.env*`, `*.pem` и `*.key` исключены через `.gitignore`. Перед публикацией проверяйте staged diff: ignore-правила не защищают уже отслеживаемые файлы. Не добавляйте секреты RPC, seed phrase, приватные ключи или кошельки с реальными средствами.
+
+Это учебная программа, не прошедшая аудит для mainnet. Поддержка базовых Token-2022 операций не означает проверку всех сочетаний расширений mint. Дополнительные правила — в [SECURITY.md](SECURITY.md).

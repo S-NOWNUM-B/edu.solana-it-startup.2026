@@ -40,7 +40,173 @@ test_both_programs!(
     rejects_mint_with_wrong_token_program,
     rejects_transfer_with_wrong_token_program,
     rejects_insufficient_balance,
+    burns_tokens,
+    rejects_zero_burn,
+    rejects_wrong_burn_authority,
+    rejects_burn_without_authority_signature,
+    rejects_burn_from_another_mint,
+    rejects_burn_with_wrong_token_program,
+    rejects_burn_account_with_wrong_token_program,
+    rejects_burn_with_non_token_program,
+    rejects_burn_insufficient_balance,
 );
+
+fn burns_tokens(token_program: Pubkey) {
+    // Decimals не передаются клиентом; проверяем, что CPI берёт их из mint.
+    for decimals in [0, DECIMALS, 9] {
+        let mut f = FundedToken::with_decimals(token_program, decimals);
+        f.context
+            .mint_tokens(&f.mint_authority, f.mint, f.destination, 100);
+        let destination_before = f.context.svm.get_account(&f.destination);
+        // Сначала частичное сжигание, затем весь остаток. Чужие 100 токенов остаются.
+        for amount in [1_234_567, INITIAL_SUPPLY - 1_234_567] {
+            let balance_before = f.context.token_account(f.source).amount;
+            let supply_before = f.context.mint(f.mint).supply;
+            let ix = f
+                .context
+                .burn_instruction(f.owner.pubkey(), f.mint, f.source, amount);
+            f.context
+                .send(ix, &[&f.owner])
+                .expect("burn_tokens must succeed");
+            assert_eq!(
+                f.context.token_account(f.source).amount,
+                balance_before - amount
+            );
+            assert_eq!(f.context.mint(f.mint).supply, supply_before - amount);
+            assert_eq!(
+                f.context.svm.get_account(&f.destination),
+                destination_before
+            );
+        }
+        assert_eq!(f.context.token_account(f.source).amount, 0);
+        assert_eq!(f.context.mint(f.mint).supply, 100);
+    }
+}
+
+fn rejects_zero_burn(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    let ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), f.mint, f.source, 0);
+    f.context.assert_rejected(
+        ix,
+        &[&f.owner],
+        TokenStarterError::AmountMustBePositive.into(),
+        &f.addresses(),
+    );
+}
+
+fn rejects_wrong_burn_authority(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    // Право выпуска токенов не даёт права сжигать баланс другого владельца.
+    let ix = f
+        .context
+        .burn_instruction(f.mint_authority.pubkey(), f.mint, f.source, 1);
+    f.context.assert_rejected(
+        ix,
+        &[&f.mint_authority],
+        ErrorCode::ConstraintTokenOwner.into(),
+        &f.addresses(),
+    );
+}
+
+fn rejects_burn_without_authority_signature(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    let mut ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), f.mint, f.source, 1);
+    ix.accounts
+        .iter_mut()
+        .find(|meta| meta.pubkey == f.owner.pubkey())
+        .unwrap()
+        .is_signer = false;
+    f.context
+        .assert_rejected(ix, &[], ErrorCode::AccountNotSigner.into(), &f.addresses());
+}
+
+fn rejects_burn_from_another_mint(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    let other_mint = f.context.create_mint(&f.mint_authority, DECIMALS);
+    let ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), other_mint, f.source, 1);
+    f.context.assert_rejected(
+        ix,
+        &[&f.owner],
+        ErrorCode::ConstraintTokenMint.into(),
+        &[f.mint, f.source, f.destination, other_mint],
+    );
+}
+
+fn rejects_burn_with_wrong_token_program(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    let mut ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), f.mint, f.source, 1);
+    ix.accounts
+        .iter_mut()
+        .find(|meta| meta.pubkey == token_program)
+        .unwrap()
+        .pubkey = other_token_program(token_program);
+    f.context.assert_rejected(
+        ix,
+        &[&f.owner],
+        ErrorCode::ConstraintMintTokenProgram.into(),
+        &f.addresses(),
+    );
+}
+
+fn rejects_burn_account_with_wrong_token_program(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    // Изолируем token::token_program: данные mint/authority оставляем правильными,
+    // но в искусственной LiteSVM-фикстуре меняем программу — владельца source.
+    let mut source = f.context.svm.get_account(&f.source).unwrap();
+    source.owner = other_token_program(token_program);
+    f.context.svm.set_account(f.source, source).unwrap();
+    let ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), f.mint, f.source, 1);
+    f.context.assert_rejected(
+        ix,
+        &[&f.owner],
+        ErrorCode::ConstraintTokenTokenProgram.into(),
+        &f.addresses(),
+    );
+}
+
+fn rejects_burn_with_non_token_program(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    let mut ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), f.mint, f.source, 1);
+    ix.accounts
+        .iter_mut()
+        .find(|meta| meta.pubkey == token_program)
+        .unwrap()
+        .pubkey = anchor_lang::system_program::ID;
+    f.context.assert_rejected(
+        ix,
+        &[&f.owner],
+        ErrorCode::InvalidProgramId.into(),
+        &f.addresses(),
+    );
+}
+
+fn rejects_burn_insufficient_balance(token_program: Pubkey) {
+    let mut f = FundedToken::new(token_program);
+    // Supply больше запрошенного amount: отказ обязан зависеть от баланса source.
+    f.context
+        .mint_tokens(&f.mint_authority, f.mint, f.destination, INITIAL_SUPPLY);
+    let ix = f
+        .context
+        .burn_instruction(f.owner.pubkey(), f.mint, f.source, INITIAL_SUPPLY + 1);
+    f.context.assert_rejected(
+        ix,
+        &[&f.owner],
+        TokenError::InsufficientFunds as u32,
+        &f.addresses(),
+    );
+}
 
 fn creates_mint(token_program: Pubkey) {
     let mut context = TestContext::new(token_program);
