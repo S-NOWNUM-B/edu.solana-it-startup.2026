@@ -103,3 +103,32 @@ cargo test --workspace --locked
 ## Что считается современным решением
 
 Современность здесь определяется не только номером версии. Решение должно использовать строгие account constraints, проверяемые state transitions, Token-2022 для нового токена, `token_interface` для совместимости, `transfer_checked` для переводов и воспроизводимые LiteSVM-тесты. Если официальные стабильные рекомендации Solana или Anchor изменятся, студент должен зафиксировать выбранные версии и объяснить отклонение в README.
+
+## Результат задания 1 — ветка `task/01-tests`
+
+Исходные условия выше сохранены. Вместо минимального `tests/create_token.rs` добавлены `programs/solana-level-1-token-starter/tests/token_program.rs` и общий модуль `tests/common/mod.rs`: 18 сценариев, каждый отдельно для Token-2022 и Token Program (36 интеграционных тестов).
+
+Версии сохранены: Anchor CLI/crates `1.1.2`, Solana CLI `3.1.10`, Rust `1.89.0`, LiteSVM `0.10.0`. Новых зависимостей нет, `Cargo.lock` не изменён.
+
+Команды из корня проекта после установки этих версий:
+
+```bash
+anchor build --ignore-keys
+cargo test --workspace --locked
+cargo fmt --all -- --check
+```
+
+Ожидаемый результат: собраны `.so` и IDL; проходят 36 интеграционных тестов и стандартный unit-тест `test_id`, без падений; форматирование проходит проверку.
+
+Покрытие тестами:
+
+- `create_token`: decimals 0/6/9, mint authority, freeze authority, нулевой supply, инициализация и token-программа — владелец mint.
+- `create_token_account`: создание ATA, owner, mint, token-программа, нулевой баланс и инициализация.
+- `mint_tokens`: первоначальный и повторный выпуск, точные изменения баланса и supply.
+- `transfer_tokens`: оба баланса, перевод всего остатка, сохранение supply; получатель имеет ненулевой начальный баланс.
+- Обязательные отказы: нулевая сумма, неверный authority, другой mint, одинаковые source/destination. Дополнительно: отсутствие подписи authority, подмена token-программы и недостаточный баланс.
+- При каждом отказе проверяются конкретная ошибка и неизменность mint/token accounts целиком. Payer исключён из сравнения из-за комиссии.
+
+Архитектура: `src/lib.rs` объявляет четыре инструкции, `src/instructions/` содержит account constraints и CPI через `token_interface`; перевод использует `transfer_checked`. Тесты создают mint и ATA через саму программу в отдельной LiteSVM для каждого запуска. Ключи генерируются в памяти; RPC, validator и файл кошелька не нужны. Код программы не изменён.
+
+Особенности Anchor 1.1.2: одинаковые изменяемые аккаунты отклоняются с `ConstraintDuplicateMutableAccount` (2040) раньше пользовательской ошибки `SourceEqualsDestination`. Подмена token-программы при создании ATA даёт `IncorrectProgramId` из CPI, при mint/transfer — `ConstraintMintTokenProgram` (2022).
