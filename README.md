@@ -121,12 +121,28 @@ anchor build -p hello_devnet --provider.cluster devnet --ignore-keys
 cargo test -p hello-devnet --locked
 ```
 
-Тест загружает собранный `target/deploy/hello_devnet.so` в LiteSVM и проверяет успешный вызов `greet` и текст приветствия в логе. Флаг `--ignore-keys` позволяет собрать чистый checkout без локального ключа программы. Для деплоя требуются Devnet-кошелёк с тестовыми SOL и локальный ключ программы. Оба файла в `.keys/` исключены из Git. После пополнения кошелька выполните:
+Тест загружает собранный `target/deploy/hello_devnet.so` в LiteSVM и проверяет успешный вызов `greet` и текст приветствия в логе. Флаг `--ignore-keys` позволяет собрать чистый checkout без локального ключа программы.
+
+Phantom-кошелёк пользователя для работы и тестов: [`9RdMNqGD4f7BNQdyrQrydVKEumk7SPbZNwCGBJeJ97os`](https://explorer.solana.com/address/9RdMNqGD4f7BNQdyrQrydVKEumk7SPbZNwCGBJeJ97os?cluster=devnet). Solana CLI не может подписать транзакцию одним публичным адресом. Для оплаты первоначального деплоя используется локальный плательщик `9KmHj9ZwNcPysvJM3CYAuc7Jp1hzVbEC7QaBAT7uD7N2`, а после проверки право обновления программы передаётся Phantom-кошельку. Перед деплоем переведите 0,5 тестовых SOL из Phantom на адрес локального плательщика в сети Devnet. Keypair-файлы в `.keys/` исключены из Git; приватный ключ Phantom не требуется.
+
+Деплой и проверка программы в терминале macOS zsh/bash:
 
 ```bash
 solana --url devnet --keypair .keys/devnet-payer.json program deploy \
   --program-id .keys/hello-devnet-program.json target/deploy/hello_devnet.so
-solana --url devnet program show dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex
+solana --url devnet --keypair .keys/devnet-payer.json program show \
+  dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex
 ```
 
-При работе с новым клоном создайте собственные ключи через `solana-keygen new --no-bip39-passphrase --silent --outfile <путь>`, узнайте адрес ключа программы через `solana-keygen pubkey <путь>` и замените его в `Anchor.toml` и `programs/hello-devnet/src/lib.rs` до сборки. Сохраните секретные ключи отдельно: ключ программы нужен для обновления по тому же адресу, а ключ кошелька задаёт право обновления и оплачивает транзакции.
+После успешного деплоя и проверки вызова `greet` передайте право обновления пользователю:
+
+```bash
+solana --url devnet --keypair .keys/devnet-payer.json program set-upgrade-authority \
+  dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex \
+  --new-upgrade-authority 9RdMNqGD4f7BNQdyrQrydVKEumk7SPbZNwCGBJeJ97os \
+  --skip-new-upgrade-authority-signer-check
+```
+
+После передачи полномочий обновления требуют подписи Phantom-кошелька; локальный плательщик больше не имеет права обновлять программу.
+
+При работе с новым клоном создайте собственные ключи через `solana-keygen new --no-bip39-passphrase --silent --outfile <путь>`, узнайте адрес ключа программы через `solana-keygen pubkey <путь>` и замените его в `Anchor.toml` и `programs/hello-devnet/src/lib.rs` до сборки. Сохраните секретные ключи отдельно: keypair программы нужен для первоначального деплоя, а подпись действующего upgrade authority — для последующих обновлений по тому же адресу.
