@@ -1,105 +1,128 @@
-# Solana Level 1 Token Starter
+<div align="center">
 
-Учебный starter для итоговых заданий первого уровня курса Superteam KZ. Он показывает современный минимальный каркас токен-программы без привязки к legacy JavaScript SDK.
+# Solana Anchor Counter
 
-> Это исходная точка, а не готовое решение. Не работайте напрямую в ветке `main`: для каждого задания создавайте отдельную ветку.
+Учебная Counter-программа Anchor и Rust-клиент для взаимодействия с локальным Solana validator.
 
-## Как получить проект через GitHub
+![Rust](https://img.shields.io/badge/Rust-1.89.0-000000?style=for-the-badge&logo=rust&logoColor=white)
+![Anchor](https://img.shields.io/badge/Anchor-1.1.2-6750A4?style=for-the-badge)
+![Solana](https://img.shields.io/badge/Solana-3.1.10-14F195?style=for-the-badge&logo=solana&logoColor=black)
+![LiteSVM](https://img.shields.io/badge/LiteSVM-0.10.0-334155?style=for-the-badge)
 
-Если вы ещё не работали с GitHub:
+</div>
 
-1. Нажмите **Fork** в правом верхнем углу страницы и создайте копию репозитория в своём аккаунте.
-2. На странице своей копии нажмите **Code** и скопируйте HTTPS-ссылку.
-3. Выполните в терминале:
+## Содержание
 
-   ```bash
-   git clone <ссылка-на-ваш-fork>
-   cd education
-   git checkout -b task/01-tests
-   ```
+- [О проекте](#о-проекте)
+- [Технологии](#технологии)
+- [Архитектура](#архитектура)
+- [Counter](#counter)
+- [Запуск](#запуск)
+- [Команды клиента](#команды-клиента)
+- [Проверки](#проверки)
 
-4. После выполнения задания сохраните изменения:
+## О проекте
 
-   ```bash
-   git add .
-   git commit -m "Complete task 01 tests"
-   git push -u origin task/01-tests
-   ```
+Задание №5 реализует Counter Program: кошелёк создаёт свой счётчик, увеличивает его и читает состояние через RPC-клиент. Демонстрация выполняет реальные транзакции в localnet.
 
-5. Отправьте преподавателю ссылку на ветку `task/01-tests` или на последний commit.
+В репозитории также сохранена токен-программа: создание mint и associated token account, выпуск токенов и перевод через `transfer_checked`. Она использует `token_interface` для совместимости с Token Program и Token-2022.
 
-Не знаете Git? Для этих заданий достаточно операций `clone`, `checkout -b`, `add`, `commit` и `push`; команды выше можно использовать как готовый сценарий.
+Учебное задание находится в ветке `task/05-anchor-counter`. Нумерация `task/*` независима от заданий онлайн-платформы в ветках `platform/01-tests`, `platform/02-burn` и `platform/03-escrow`.
 
-## Задание 1 — покрыть токен-программу тестами
+## Технологии
 
-В проекте уже есть минимальный LiteSVM-тест `create_token`. Его нужно усилить и добавить тесты остальных реализованных инструкций.
+| Часть проекта | Технологии |
+| :-- | :-- |
+| Программы | Rust 1.89.0, Anchor 1.1.2, Solana CLI 3.1.10 |
+| Counter-клиент | Rust, Cargo, `solana-rpc-client` 3.1.14 |
+| Тесты программ | Rust, LiteSVM 0.10.0 |
 
-### Что нужно сделать
+## Архитектура
 
-- В тесте `create_token` проверить `decimals`, mint authority, supply и владельца mint, а не только наличие аккаунта.
-- Покрыть `create_token_account`: проверить владельца token account, mint и token program.
-- Покрыть `mint_tokens`: проверить изменение баланса получателя и общего supply.
-- Покрыть `transfer_tokens`: проверить оба баланса и неизменность общего supply.
-- Добавить негативные сценарии: нулевая сумма, неверный authority, другой mint и одинаковые source/destination.
-- Обновить README в своём fork: указать версии, команды запуска и кратко описать добавленные тесты.
+| Каталог | Ответственность |
+| :-- | :-- |
+| `programs/counter/` | Anchor-инструкции и состояние счётчика |
+| `clients/counter-client/` | Подписание транзакций, отправка в RPC и чтение Counter |
+| `programs/solana-level-1-token-starter/` | Существующая токен-программа |
 
-### Готовность задания
+Программы и клиент входят в корневой Cargo workspace. Клиент использует типы аккаунта и инструкций из crate `counter` с feature `no-entrypoint`, подтверждает транзакции и читает аккаунты с commitment `confirmed`.
 
-Чистый checkout вашей ветки должен проходить:
+## Counter
+
+Каждый authority имеет один PDA с seeds `[b"counter", authority.pubkey()]`. Аккаунт хранит `authority: Pubkey`, `count: u64` и `bump: u8`.
+
+| Инструкция | Результат | Проверки |
+| :-- | :-- | :-- |
+| `initialize` | Создаёт Counter с `count = 0` | Подпись authority, правильный PDA; повторное создание отклоняется |
+| `increment` | Увеличивает `count` на 1 | Подпись, `has_one`, seeds; переполнение отклоняется |
+
+Счётчики разных кошельков независимы. Изменить чужой Counter нельзя; неуспешная транзакция сохраняет прежнее значение.
+
+## Запуск
+
+На macOS используйте терминал zsh/bash. Все команды выполняйте из корня репозитория; нужны версии из таблицы технологий и кошелёк `~/.config/solana/id.json`.
+
+Если кошелька нет, создайте его в zsh/bash. Условие сохраняет существующий файл:
 
 ```bash
-anchor build --ignore-keys
+if [ ! -e "$HOME/.config/solana/id.json" ]; then
+  solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
+fi
+```
+
+Можно использовать свой локальный кошелёк, передав его путь клиенту через `--keypair` после команды.
+
+1. Соберите программы:
+
+   ```bash
+   anchor build --ignore-keys
+   ```
+
+   Сборка создаёт `target/deploy/counter.so` и файл токен-программы. Флаг `--ignore-keys` позволяет использовать объявленные program ID без хранения program keypair в репозитории.
+
+2. В отдельном терминале zsh/bash запустите validator и загрузите Counter под объявленным ID:
+
+   ```bash
+   mkdir -p .anchor
+   solana-test-validator \
+     --bpf-program HhHRzXNfzoM5ZWCNEmVtgz2upLMrbwPCdk63KjhoFybR target/deploy/counter.so \
+     --ledger .anchor/counter-ledger
+   ```
+
+   Оставьте validator работающим. Ledger сохраняет состояние между запусками; этот сценарий использует localnet.
+
+3. В другом терминале zsh/bash пополните локальный кошелёк и запустите демонстрацию:
+
+   ```bash
+   solana airdrop 2 --url localhost
+   cargo run -p counter-client --locked -- demo
+   ```
+
+   `demo` создаёт отсутствующий Counter и выполняет три увеличения с чтением после каждого. Для нового аккаунта значения будут `1`, `2`, `3`; существующий счётчик продолжает увеличиваться без сброса.
+
+## Команды клиента
+
+Клиент по умолчанию подключается к `http://127.0.0.1:8899` и использует `~/.config/solana/id.json`. Параметры `--url` и `--keypair` позволяют выбрать RPC и файл кошелька.
+
+| Команда в zsh/bash | Назначение |
+| :-- | :-- |
+| `cargo run -p counter-client --locked -- initialize` | Создать Counter со значением 0 |
+| `cargo run -p counter-client --locked -- increment` | Увеличить Counter на 1 |
+| `cargo run -p counter-client --locked -- show` | Прочитать PDA, authority и значение |
+| `cargo run -p counter-client --locked -- demo` | Создать отсутствующий Counter и увеличить трижды |
+
+## Проверки
+
+После сборки выполните из корня репозитория в zsh/bash:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
-Флаг `--ignore-keys` нужен только потому, что локальный program keypair намеренно не хранится в учебном репозитории. Для собственного devnet-деплоя создайте keypair локально и синхронизируйте ID командой `anchor keys sync`, но не добавляйте файл keypair в Git.
+Девять LiteSVM-тестов в `clients/counter-client/tests/counter.rs` проверяют начальное состояние и PDA, сохранение увеличений, изоляцию кошельков, отклонение чужого authority, повторной инициализации, отсутствующей подписи и переполнения. Программа отклоняет подмену PDA, а клиент — аккаунт с чужим владельцем, пустыми данными или неверным discriminator.
 
-Не публикуйте keypair, seed phrase, приватные ключи или `.env` с секретами.
+Тесты используют те же builders инструкций и декодирование, что и RPC-клиент. Команда `demo` проверяет взаимодействие с запущенным validator.
 
-Следующие задания выполняются в ветках `task/02-burn` и `task/03-escrow`. Их условия выдаются на учебной платформе; готовой реализации в starter нет.
-
-## Зафиксированный стек
-
-- Anchor CLI и crates: `1.1.2`
-- Solana CLI: `3.1.10`
-- Rust: `1.89.0`
-- тесты программ: Rust + LiteSVM `0.10.0`
-- токены: `anchor_spl::token_interface`, совместимый с Token Program и Token-2022
-- рекомендуемый клиент для нового TypeScript-кода: `@solana/kit`
-
-`@solana/web3.js` относится к legacy-стеку. TypeScript-клиент Anchor `@anchor-lang/core` по-прежнему зависит от `@solana/web3.js` v1, поэтому в этом starter тесты написаны на Rust и LiteSVM. Для нового клиентского приложения используйте `@solana/kit`, если задание явно не требует другого.
-
-Оригинальный Token Program остается рабочим и широко используется. Для новых токенов в учебных заданиях используйте Token-2022, а program-код пишите через `token_interface`, чтобы сохранить совместимость с обоими Token Program.
-
-## Что уже реализовано
-
-- создание mint с выбранной token-программой;
-- создание associated token account;
-- выпуск токенов через `mint_to`;
-- перевод через `transfer_checked`;
-- проверки положительной суммы, полномочий, mint и token program на уровне Anchor accounts constraints;
-- один эталонный LiteSVM-тест создания Token-2022 mint.
-
-Функции `burn_tokens` и Escrow намеренно отсутствуют: студент реализует их в следующих заданиях.
-
-## Быстрый старт
-
-1. Установите версии из раздела «Зафиксированный стек» через AVM, rustup и официальный Solana installer.
-2. Для локального прохождения заданий выполните `anchor build --ignore-keys`. Для собственного devnet-деплоя создайте локальный program keypair и выполните `anchor keys sync`. Не коммитьте keypair или seed phrase.
-3. После первой сборки выполните `cargo test --workspace --locked`.
-4. Разрабатывайте каждое задание в отдельной ветке: `task/01-tests`, `task/02-burn`, `task/03-escrow`.
-
-Тест загружает собранный файл `target/deploy/solana_level_1_token_starter.so`, поэтому перед первым `cargo test` нужен `anchor build --ignore-keys`.
-
-## Правила сдачи
-
-- сдавайте публичную ссылку на GitHub-репозиторий и указывайте ветку или commit SHA;
-- добавьте в README команды сборки и тестирования, ожидаемый результат и краткое описание архитектуры;
-- не добавляйте в репозиторий private keys, seed phrases, `.env` с секретами или файлы keypair;
-- не используйте `@solana/web3.js` в новом клиентском коде;
-- для переводов токенов используйте `transfer_checked`, а не unchecked transfer;
-- не подменяйте проверки полномочий только клиентской логикой: все критичные инварианты должны проверяться программой.
-
-## Что считается современным решением
-
-Современность здесь определяется не только номером версии. Решение должно использовать строгие account constraints, проверяемые state transitions, Token-2022 для нового токена, `token_interface` для совместимости, `transfer_checked` для переводов и воспроизводимые LiteSVM-тесты. Если официальные стабильные рекомендации Solana или Anchor изменятся, студент должен зафиксировать выбранные версии и объяснить отклонение в README.
+Файлы кошельков, program keypair, seed phrase и приватные ключи нельзя добавлять в Git или публиковать в выводе документации.

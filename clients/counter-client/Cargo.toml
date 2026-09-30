@@ -1,0 +1,19 @@
+[package]
+name = "counter-client"
+version = "0.1.0"
+description = "Rust RPC client for the Anchor counter program"
+edition = "2021"
+
+[dependencies]
+anchor-lang = "=1.1.2"
+counter = { path = "../../programs/counter", features = ["no-entrypoint"] }
+solana-commitment-config = "=3.0.0"
+solana-keypair = "=3.1.2"
+solana-message = "=3.0.1"
+solana-rpc-client = { version = "=3.1.14", default-features = false }
+solana-signer = "=3.0.0"
+solana-transaction = "=3.0.2"
+
+[dev-dependencies]
+litesvm = "=0.10.0"
+solana-account = "=3.4.0"

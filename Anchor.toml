@@ -8,10 +8,11 @@ skip-lint = false
 
 [programs.localnet]
 solana_level_1_token_starter = "3pX5NKLru1UBDVckynWQxsgnJeUN3N1viy36Gk9TSn8d"
+counter = "HhHRzXNfzoM5ZWCNEmVtgz2upLMrbwPCdk63KjhoFybR"
 
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "cargo test"
+test = "cargo test --workspace --locked"
