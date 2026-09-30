@@ -1,8 +1,8 @@
 <div align="center">
 
-# Solana Anchor Counter
+# Solana Onchain Profile
 
-Учебная Counter-программа Anchor и Rust-клиент для взаимодействия с локальным Solana validator.
+Учебный профиль на PDA: Anchor-программа и Rust-клиент для создания, обновления и чтения данных в Solana.
 
 ![Rust](https://img.shields.io/badge/Rust-1.89.0-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Anchor](https://img.shields.io/badge/Anchor-1.1.2-6750A4?style=for-the-badge)
@@ -16,47 +16,55 @@
 - [О проекте](#о-проекте)
 - [Технологии](#технологии)
 - [Архитектура](#архитектура)
-- [Counter](#counter)
+- [Профиль](#профиль)
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
 
 ## О проекте
 
-Задание №5 реализует Counter Program: кошелёк создаёт свой счётчик, увеличивает его и читает состояние через RPC-клиент. Демонстрация выполняет реальные транзакции в localnet.
+Задание №6 реализует onchain-профиль: кошелёк создаёт аккаунт с именем и описанием, обновляет его и читает через RPC-клиент. Данные хранятся в PDA, адрес которого вычисляется по публичному ключу владельца.
 
-В репозитории также сохранена токен-программа: создание mint и associated token account, выпуск токенов и перевод через `transfer_checked`. Она использует `token_interface` для совместимости с Token Program и Token-2022.
+В репозитории сохранены Counter с отдельным Rust-клиентом и токен-программа для создания mint и associated token account, выпуска и перевода токенов через `transfer_checked`.
 
-Учебное задание находится в ветке `task/05-anchor-counter`. Нумерация `task/*` независима от заданий онлайн-платформы в ветках `platform/01-tests`, `platform/02-burn` и `platform/03-escrow`.
+Задание находится в ветке `task/06-onchain-profile`. Нумерация `task/*` независима от заданий онлайн-платформы в ветках `platform/01-tests`, `platform/02-burn` и `platform/03-escrow`.
 
 ## Технологии
 
 | Часть проекта | Технологии |
 | :-- | :-- |
 | Программы | Rust 1.89.0, Anchor 1.1.2, Solana CLI 3.1.10 |
-| Counter-клиент | Rust, Cargo, `solana-rpc-client` 3.1.14 |
+| Profile-клиент | Rust, Cargo, `solana-rpc-client` 3.1.14 |
 | Тесты программ | Rust, LiteSVM 0.10.0 |
 
 ## Архитектура
 
 | Каталог | Ответственность |
 | :-- | :-- |
-| `programs/counter/` | Anchor-инструкции и состояние счётчика |
-| `clients/counter-client/` | Подписание транзакций, отправка в RPC и чтение Counter |
+| `programs/onchain-profile/` | Anchor-инструкции и аккаунт Profile |
+| `clients/profile-client/` | Подписание транзакций, отправка в RPC и чтение профиля |
+| `programs/counter/`, `clients/counter-client/` | Счётчик из задания №5 |
 | `programs/solana-level-1-token-starter/` | Существующая токен-программа |
 
-Программы и клиент входят в корневой Cargo workspace. Клиент использует типы аккаунта и инструкций из crate `counter` с feature `no-entrypoint`, подтверждает транзакции и читает аккаунты с commitment `confirmed`.
+Программы и клиенты входят в корневой Cargo workspace. Profile-клиент использует типы аккаунта и инструкций crate `onchain-profile` с feature `no-entrypoint`, подтверждает транзакции и читает аккаунты с commitment `confirmed`.
 
-## Counter
+## Профиль
 
-Каждый authority имеет один PDA с seeds `[b"counter", authority.pubkey()]`. Аккаунт хранит `authority: Pubkey`, `count: u64` и `bump: u8`.
+Каждый authority имеет один канонический PDA с seeds `[b"profile", authority.pubkey()]`. Создание и обновление требуют подписи владельца; чтение публично.
+
+| Поле Profile | Тип | Ограничение |
+| :-- | :-- | :-- |
+| `authority` | `Pubkey` | Кошелёк владельца |
+| `display_name` | `String` | Не пустое после `trim()`, до 32 байт UTF-8 |
+| `bio` | `String` | До 160 байт UTF-8; может быть пустым |
+| `bump` | `u8` | Канонический bump PDA |
 
 | Инструкция | Результат | Проверки |
 | :-- | :-- | :-- |
-| `initialize` | Создаёт Counter с `count = 0` | Подпись authority, правильный PDA; повторное создание отклоняется |
-| `increment` | Увеличивает `count` на 1 | Подпись, `has_one`, seeds; переполнение отклоняется |
+| `initialize(display_name, bio)` | Создаёт профиль | Подпись authority, PDA и допустимые строки; повторное создание отклоняется |
+| `update_profile(display_name, bio)` | Обновляет имя и описание | Подпись, `has_one`, seeds, bump и допустимые строки |
 
-Счётчики разных кошельков независимы. Изменить чужой Counter нельзя; неуспешная транзакция сохраняет прежнее значение.
+Лимиты считаются в байтах, поэтому символы кириллицы и emoji занимают больше одного байта. Чужой authority не может изменить профиль; отклонённая транзакция сохраняет прежние данные.
 
 ## Запуск
 
@@ -70,46 +78,49 @@ if [ ! -e "$HOME/.config/solana/id.json" ]; then
 fi
 ```
 
-Можно использовать свой локальный кошелёк, передав его путь клиенту через `--keypair` после команды.
+Для своего локального кошелька передайте клиенту `--keypair <PATH>` после команды и пополните соответствующий публичный адрес.
 
-1. Соберите программы:
+1. Соберите программы в zsh/bash:
 
    ```bash
    anchor build --ignore-keys
    ```
 
-   Сборка создаёт `target/deploy/counter.so` и файл токен-программы. Флаг `--ignore-keys` позволяет использовать объявленные program ID без хранения program keypair в репозитории.
+   Сборка создаёт `target/deploy/onchain_profile.so` и файлы существующих программ. Флаг `--ignore-keys` позволяет использовать объявленные program ID без хранения program keypair в репозитории.
 
-2. В отдельном терминале zsh/bash запустите validator и загрузите Counter под объявленным ID:
+2. В отдельном терминале zsh/bash запустите validator и загрузите программу профиля:
 
    ```bash
    mkdir -p .anchor
    solana-test-validator \
-     --bpf-program HhHRzXNfzoM5ZWCNEmVtgz2upLMrbwPCdk63KjhoFybR target/deploy/counter.so \
-     --ledger .anchor/counter-ledger
+     --bpf-program 3j2EZTtxkTLmxCjnpBzJhhf3QsavZwueQ9QbQzdxqyzj target/deploy/onchain_profile.so \
+     --ledger .anchor/profile-ledger
    ```
 
-   Оставьте validator работающим. Ledger сохраняет состояние между запусками; этот сценарий использует localnet.
+   Оставьте validator работающим. Ledger сохраняет состояние между запусками; демонстрация использует localnet.
 
 3. В другом терминале zsh/bash пополните локальный кошелёк и запустите демонстрацию:
 
    ```bash
    solana airdrop 2 --url localhost
-   cargo run -p counter-client --locked -- demo
+   cargo run -p profile-client --locked -- demo
    ```
 
-   `demo` создаёт отсутствующий Counter и выполняет три увеличения с чтением после каждого. Для нового аккаунта значения будут `1`, `2`, `3`; существующий счётчик продолжает увеличиваться без сброса.
+   `demo` создаёт отсутствующий профиль с именем `SNOWNUMB` и описанием `Solana profile`, затем обновляет описание на `Onchain profile with PDA` и читает результат. Для существующего профиля команда сохраняет имя и заменяет только `bio`.
 
 ## Команды клиента
 
-Клиент по умолчанию подключается к `http://127.0.0.1:8899` и использует `~/.config/solana/id.json`. Параметры `--url` и `--keypair` позволяют выбрать RPC и файл кошелька.
+Клиент по умолчанию подключается к `http://127.0.0.1:8899` и использует `~/.config/solana/id.json`. Параметры `--url` и `--keypair` указывайте после команды.
 
 | Команда в zsh/bash | Назначение |
 | :-- | :-- |
-| `cargo run -p counter-client --locked -- initialize` | Создать Counter со значением 0 |
-| `cargo run -p counter-client --locked -- increment` | Увеличить Counter на 1 |
-| `cargo run -p counter-client --locked -- show` | Прочитать PDA, authority и значение |
-| `cargo run -p counter-client --locked -- demo` | Создать отсутствующий Counter и увеличить трижды |
+| `cargo run -p profile-client --locked -- create --name SNOWNUMB --bio "Solana profile"` | Создать профиль кошелька |
+| `cargo run -p profile-client --locked -- update --name SNOWNUMB --bio "Onchain profile with PDA"` | Изменить имя и описание |
+| `cargo run -p profile-client --locked -- show` | Прочитать профиль своего кошелька |
+| `cargo run -p profile-client --locked -- show --authority <PUBKEY>` | Прочитать публичный профиль без файла кошелька |
+| `cargo run -p profile-client --locked -- demo` | Создать отсутствующий профиль, обновить и прочитать |
+
+Профиль хранится публично. В `display_name` и `bio` нельзя записывать приватные ключи, seed phrase или другие секреты.
 
 ## Проверки
 
@@ -121,8 +132,10 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
-Девять LiteSVM-тестов в `clients/counter-client/tests/counter.rs` проверяют начальное состояние и PDA, сохранение увеличений, изоляцию кошельков, отклонение чужого authority, повторной инициализации, отсутствующей подписи и переполнения. Программа отклоняет подмену PDA, а клиент — аккаунт с чужим владельцем, пустыми данными или неверным discriminator.
+Перед тестами нужна Anchor-сборка: LiteSVM загружает файлы программ из `target/deploy/`.
 
-Тесты используют те же builders инструкций и декодирование, что и RPC-клиент. Команда `demo` проверяет взаимодействие с запущенным validator.
+Тесты в `clients/profile-client/tests/profile.rs` проверяют PDA и размер аккаунта, создание, обновление, публичное чтение, изоляцию кошельков и границы UTF-8. Негативные сценарии проверяют полномочия, подпись, повторную инициализацию, подмену PDA и некорректные данные; отклонённые операции сохраняют прежнее состояние.
 
-Файлы кошельков, program keypair, seed phrase и приватные ключи нельзя добавлять в Git или публиковать в выводе документации.
+Команда `demo` проверяет взаимодействие Profile-клиента с запущенным validator.
+
+Файлы кошельков, program keypair, seed phrase и приватные ключи нельзя добавлять в Git или публиковать в документации.
