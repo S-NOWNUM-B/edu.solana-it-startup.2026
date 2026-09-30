@@ -15,7 +15,7 @@
    ```bash
    git clone <ссылка-на-ваш-fork>
    cd education
-   git checkout -b task/01-tests
+   git checkout -b platform/01-tests
    ```
 
 4. После выполнения задания сохраните изменения:
@@ -23,10 +23,10 @@
    ```bash
    git add .
    git commit -m "Complete task 01 tests"
-   git push -u origin task/01-tests
+   git push -u origin platform/01-tests
    ```
 
-5. Отправьте преподавателю ссылку на ветку `task/01-tests` или на последний commit.
+5. Отправьте преподавателю ссылку на ветку `platform/01-tests` или на последний commit.
 
 Не знаете Git? Для этих заданий достаточно операций `clone`, `checkout -b`, `add`, `commit` и `push`; команды выше можно использовать как готовый сценарий.
 
@@ -56,7 +56,7 @@ cargo test --workspace --locked
 
 Не публикуйте keypair, seed phrase, приватные ключи или `.env` с секретами.
 
-Следующие задания выполняются в ветках `task/02-burn` и `task/03-escrow`. Их условия выдаются на учебной платформе; готовой реализации в starter нет.
+Следующие задания выполняются в ветках `platform/02-burn` и `platform/03-escrow`. Их условия выдаются на учебной платформе; готовой реализации в starter нет.
 
 ## Зафиксированный стек
 
@@ -87,7 +87,7 @@ cargo test --workspace --locked
 1. Установите версии из раздела «Зафиксированный стек» через AVM, rustup и официальный Solana installer.
 2. Для локального прохождения заданий выполните `anchor build --ignore-keys`. Для собственного devnet-деплоя создайте локальный program keypair и выполните `anchor keys sync`. Не коммитьте keypair или seed phrase.
 3. После первой сборки выполните `cargo test --workspace --locked`.
-4. Разрабатывайте каждое задание в отдельной ветке: `task/01-tests`, `task/02-burn`, `task/03-escrow`.
+4. Разрабатывайте каждое задание в отдельной ветке: `platform/01-tests`, `platform/02-burn`, `platform/03-escrow`.
 
 Тест загружает собранный файл `target/deploy/solana_level_1_token_starter.so`, поэтому перед первым `cargo test` нужен `anchor build --ignore-keys`.
 
@@ -104,9 +104,13 @@ cargo test --workspace --locked
 
 Современность здесь определяется не только номером версии. Решение должно использовать строгие account constraints, проверяемые state transitions, Token-2022 для нового токена, `token_interface` для совместимости, `transfer_checked` для переводов и воспроизводимые LiteSVM-тесты. Если официальные стабильные рекомендации Solana или Anchor изменятся, студент должен зафиксировать выбранные версии и объяснить отклонение в README.
 
+## Нумерация веток
+
+Задания онлайн-платформы выполняются в ветках `platform/01-tests`, `platform/02-burn` и `platform/03-escrow`. Для заданий, присланных отдельно, номер ветки совпадает с номером задания: Rust CLI — `task/03-rust-cli`, первая Solana Program в Devnet — `task/04-first-solana-program`.
+
 ## Первая Solana Program в Devnet
 
-Для задания создана отдельная программа `programs/hello-devnet/`. Её инструкция `greet` записывает строку `Hello from Solana Devnet!` в лог транзакции. Программа не создаёт аккаунты и не принимает аргументы: так проще проверить полный путь от исходного кода до исполняемого аккаунта в Devnet.
+В ветке [`task/04-first-solana-program`](https://github.com/S-NOWNUM-B/edu.solana-it-startup.2026/tree/task/04-first-solana-program) для задания №4 создана отдельная программа `programs/hello-devnet/`. Её инструкция `greet` записывает строку `Hello from Solana Devnet!` в лог транзакции. Программа не создаёт аккаунты и не принимает аргументы: так проще проверить полный путь от исходного кода до исполняемого аккаунта в Devnet.
 
 Адрес программы: [`dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex`](https://explorer.solana.com/address/dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex?cluster=devnet). Он указан в `declare_id!` и `[programs.devnet]` в `Anchor.toml`. Исходную токен-программу и её настройку Localnet это не меняет.
 
