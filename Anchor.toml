@@ -9,6 +9,9 @@ skip-lint = false
 [programs.localnet]
 solana_level_1_token_starter = "3pX5NKLru1UBDVckynWQxsgnJeUN3N1viy36Gk9TSn8d"
 
+[programs.devnet]
+hello_devnet = "dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex"
+
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"

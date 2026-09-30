@@ -103,3 +103,26 @@ cargo test --workspace --locked
 ## Что считается современным решением
 
 Современность здесь определяется не только номером версии. Решение должно использовать строгие account constraints, проверяемые state transitions, Token-2022 для нового токена, `token_interface` для совместимости, `transfer_checked` для переводов и воспроизводимые LiteSVM-тесты. Если официальные стабильные рекомендации Solana или Anchor изменятся, студент должен зафиксировать выбранные версии и объяснить отклонение в README.
+
+## Первая Solana Program в Devnet
+
+Для задания создана отдельная программа `programs/hello-devnet/`. Её инструкция `greet` записывает строку `Hello from Solana Devnet!` в лог транзакции. Программа не создаёт аккаунты и не принимает аргументы: так проще проверить полный путь от исходного кода до исполняемого аккаунта в Devnet.
+
+Адрес программы: [`dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex`](https://explorer.solana.com/address/dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex?cluster=devnet). Он указан в `declare_id!` и `[programs.devnet]` в `Anchor.toml`. Исходную токен-программу и её настройку Localnet это не меняет.
+
+На macOS в терминале zsh/bash из корня репозитория соберите программу и запустите тест:
+
+```bash
+anchor build -p hello_devnet --provider.cluster devnet --ignore-keys
+cargo test -p hello-devnet --locked
+```
+
+Тест загружает собранный `target/deploy/hello_devnet.so` в LiteSVM и проверяет успешный вызов `greet` и текст приветствия в логе. Флаг `--ignore-keys` позволяет собрать чистый checkout без локального ключа программы. Для деплоя требуются Devnet-кошелёк с тестовыми SOL и локальный ключ программы. Оба файла в `.keys/` исключены из Git. После пополнения кошелька выполните:
+
+```bash
+solana --url devnet --keypair .keys/devnet-payer.json program deploy \
+  --program-id .keys/hello-devnet-program.json target/deploy/hello_devnet.so
+solana --url devnet program show dtAv1kjUCA3BTjbs75nMn1fV9vfZ23WEq1AZaDJbNex
+```
+
+При работе с новым клоном создайте собственные ключи через `solana-keygen new --no-bip39-passphrase --silent --outfile <путь>`, узнайте адрес ключа программы через `solana-keygen pubkey <путь>` и замените его в `Anchor.toml` и `programs/hello-devnet/src/lib.rs` до сборки. Сохраните секретные ключи отдельно: ключ программы нужен для обновления по тому же адресу, а ключ кошелька задаёт право обновления и оплачивает транзакции.
