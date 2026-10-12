@@ -2,7 +2,7 @@
 
 # Solana SNOWNUMB TOKEN
 
-Токен SNTOK и DeFi через Orca Whirlpools: metadata, выпуск, перевод, ликвидность и обмен SOL → SNTOK.
+Токен SNTOK, DeFi через Orca Whirlpools и dashboard публичных данных Solana: балансы, токены, транзакции и активность программ.
 
 ![Rust](https://img.shields.io/badge/Rust-1.89.0-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Anchor](https://img.shields.io/badge/Anchor-1.1.2-6750A4?style=for-the-badge)
@@ -13,6 +13,7 @@
 
 ## Содержание
 
+- [Задание 10 RPC dashboard](#задание-10-rpc-dashboard)
 - [Задание 9 DeFi на Solana](#задание-9-defi-на-solana)
 - [Задание 7 SPL Token и Token Extensions](#задание-7-spl-token-и-token-extensions)
 - [О проекте](#о-проекте)
@@ -22,6 +23,61 @@
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
+
+## Задание 10 RPC dashboard
+
+Ветка `task/10-rpc-dashboard` добавляет веб-dashboard **SNOWNUMB CHAIN** поверх Rust RPC-клиента. Он читает публичный адрес кошелька в devnet и показывает баланс SOL, токен-счета SPL Token и Token-2022, последние транзакции кошелька и активность Orca Whirlpools и Token-2022 в сети.
+
+### Запуск dashboard
+
+Из корня репозитория в терминале macOS zsh/bash:
+
+```bash
+cargo run -p dashboard-client --locked
+```
+
+Откройте [dashboard](http://127.0.0.1:8787) в браузере. Начальный адрес — кошелёк SNTOK из задания 9. Можно ввести другой публичный адрес и нажать «Обновить данные». Подключение кошелька и подпись не нужны.
+
+Другой порт, начальный адрес или devnet RPC в zsh/bash:
+
+```bash
+cargo run -p dashboard-client --locked -- --port 8787 --wallet <PUBKEY> --url https://api.devnet.solana.com
+```
+
+Сервер слушает `127.0.0.1` и проверяет genesis hash devnet до запуска. Он выполняет только чтение через RPC. HTML, CSS и JavaScript встроены в бинарник через `include_str!`, поэтому после изменения `web/` перезапустите `cargo run`, чтобы пересобрать интерфейс. Остановка — Ctrl+C в терминале.
+
+### Данные и HTTP API
+
+| Раздел | Источник и поведение |
+| :-- | :-- |
+| Баланс SOL | [getBalance](https://solana.com/docs/rpc/http/getbalance), сумма в lamports и слот ответа |
+| Токены | [getTokenAccountsByOwner](https://solana.com/docs/rpc/http/gettokenaccountsbyowner) с `jsonParsed` для обоих token program; mint, decimals, raw amount и токен-счёт |
+| Транзакции кошелька | [getSignaturesForAddress](https://solana.com/docs/rpc/http/getsignaturesforaddress), до 6 последних подписей, результат и слот |
+| Активность программ | По 6 последних подписей Orca Whirlpools и Token-2022 во всей сети devnet |
+
+Имя и символ SNTOK берутся из существующего `clients/token-client/metadata.json`. Остальные неизвестные mint показываются по адресу. Строка токенов соответствует отдельному токен-счёту; активы в сводке считаются по уникальным mint. Ленты показывают последние записи, а не общий счётчик за период.
+
+| HTTP endpoint | Ответ |
+| :-- | :-- |
+| `GET /api/config` | Начальный кошелёк, RPC, сеть и metadata SNTOK |
+| `GET /api/dashboard?wallet=<PUBKEY>` | `balance`, `tokens`, `transactions`, `programs`, `errors`; без query используется начальный кошелёк |
+
+Commitment — `confirmed`. `balance.lamports` и `tokens[].amount` передаются строками целых минимальных единиц. Интерфейс форматирует raw amount по decimals без float и потери точности. Ошибка RPC возвращает `null` для недоступного раздела и сообщение в `errors`; успешные пустые данные возвращаются пустым массивом. UI различает загрузку, пустой результат и ошибку. Каждый RPC-вызов ограничен 8 секундами, включая повторные запросы при HTTP 429. Неверный адрес отклоняется с HTTP 400, методы записи — с HTTP 405.
+
+### Проверки dashboard
+
+В терминале macOS zsh/bash:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy -p dashboard-client --all-targets --locked -- -D warnings
+cargo test -p dashboard-client --locked
+cargo build -p dashboard-client --locked
+```
+
+Три теста проверяют входной адрес, точность сумм больше 2^53 и владельца токен-счёта. Live API и браузер показали **0.1772994 SOL** и **874 509.707785 SNTOK** в проверенном снимке кошелька. Баланс SOL совпал с независимым чтением Solana CLI; доступны 6 транзакций кошелька и обе ленты программ. Проверены desktop/mobile, смена адреса, неверный адрес, HTTP 400/405/404 и ограничение HTTP 429 с частичным результатом.
+
+Исходники: `clients/dashboard-client/src/main.rs` и `clients/dashboard-client/web/`. Word-отчёт со скриншотами dashboard сохраняется локально.
 
 ## Задание 9 DeFi на Solana
 
@@ -171,6 +227,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 | Часть проекта | Технологии |
 | :-- | :-- |
 | Программы | Rust 1.89.0, Anchor 1.1.2, Solana CLI 3.1.10 |
+| Dashboard | Rust, tiny_http 0.12.0, Solana RPC 3.1.14, HTML/CSS/JavaScript |
 | DeFi-клиент | Rust, Orca Whirlpools SDK/client 8.0.0, Tokio 1.53.1 |
 | Token-клиент | Rust, `solana-rpc-client` 3.1.14, Token-2022 interface 2.1.0, metadata interface 0.8.0 |
 | Profile-клиент | Rust, Cargo, `solana-rpc-client` 3.1.14 |
@@ -180,6 +237,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 
 | Каталог | Ответственность |
 | :-- | :-- |
+| `clients/dashboard-client/` | HTTP API публичных данных и веб-dashboard Solana |
 | `clients/defi-client/` | Пул SNTOK/wSOL, позиция ликвидности, quote и swap через Orca |
 | `clients/token-client/` | Mint с metadata, выпуск и перевод SNTOK, публичное чтение |
 | `programs/onchain-profile/` | Anchor-инструкции и аккаунт Profile |

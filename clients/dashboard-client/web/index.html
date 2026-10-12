@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>SNOWNUMB · Chain dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#overview">К данным кошелька</a>
+  <header class="topbar"><div class="shell topbar-inner"><a class="brand" href="/">SNOWNUMB<span>CHAIN</span></a><span class="network"><i aria-hidden="true"></i>Solana devnet</span></div></header>
+  <main class="shell">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">RPC / BLOCKCHAIN DATA</p>
+      <h1 id="page-title">Обзор кошелька</h1>
+      <p class="intro-copy">Балансы, активы и операции в Solana. Достаточно публичного адреса.</p>
+      <form id="wallet-form">
+        <label for="wallet">Адрес кошелька</label>
+        <div class="wallet-controls"><input id="wallet" name="wallet" autocomplete="off" autocapitalize="off" spellcheck="false" required placeholder="Публичный адрес Solana"><button id="refresh" type="submit">Обновить данные <span aria-hidden="true">↗</span></button></div>
+      </form>
+      <p id="status" class="status" role="status" aria-live="polite">Подключаюсь к RPC…</p>
+    </section>
+    <div id="overview" tabindex="-1" aria-busy="true">
+      <div class="metrics" aria-label="Сводка кошелька">
+        <div class="metric"><p>Баланс SOL</p><strong id="sol-balance">—</strong><span>SOL</span></div>
+        <div class="metric"><p>Активы</p><strong id="token-count">—</strong><span>разных mint</span></div>
+        <div class="metric"><p>Транзакции кошелька</p><strong id="transaction-count">—</strong><span>в последних 6 записях</span></div>
+        <div class="metric"><p>Слот баланса</p><strong id="slot">—</strong><span>confirmed</span></div>
+      </div>
+      <section class="data-section" aria-labelledby="tokens-title">
+        <div class="section-heading"><h2 id="tokens-title">Токены</h2><span>SPL Token / Token-2022</span></div>
+        <div class="table-wrap"><table class="token-table"><thead><tr><th scope="col">Актив</th><th scope="col">Mint</th><th scope="col">Стандарт</th><th scope="col" class="align-right">Баланс</th></tr></thead><tbody id="tokens"><tr><td colspan="4" class="empty">Загрузка токенов…</td></tr></tbody></table></div>
+        <p class="section-note">Каждая строка — отдельный токен-счёт кошелька. Название актива открывает его mint в Explorer.</p>
+      </section>
+      <section class="data-section" aria-labelledby="transactions-title">
+        <div class="section-heading"><h2 id="transactions-title">Транзакции кошелька</h2><a id="wallet-explorer" hidden target="_blank" rel="noopener noreferrer">Кошелёк в Explorer ↗</a></div>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Результат</th><th scope="col">Подпись</th><th scope="col" class="align-right">Слот</th></tr></thead><tbody id="transactions"><tr><td colspan="3" class="empty">Загрузка транзакций…</td></tr></tbody></table></div>
+        <p class="section-note">До 6 последних записей по адресу кошелька; результат и слот получены из RPC.</p>
+      </section>
+      <section class="data-section" aria-labelledby="programs-title">
+        <div class="section-heading"><h2 id="programs-title">Активность программ</h2><span>В сети devnet</span></div>
+        <p class="program-note">Последние транзакции Orca Whirlpools и Token-2022. До 6 записей по каждой программе.</p>
+        <div id="programs" class="programs"><p class="empty">Загрузка активности программ…</p></div>
+      </section>
+    </div>
+    <footer><span>SNOWNUMB / SOLANA</span><span id="rpc-label">Данные из Solana RPC</span></footer>
+  </main>
+</body>
+</html>
