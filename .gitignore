@@ -3,3 +3,4 @@
 /.keys
 **/*.json
 !package.json
+!clients/token-client/metadata.json

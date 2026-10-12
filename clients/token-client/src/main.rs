@@ -1,0 +1,318 @@
+use solana_commitment_config::CommitmentConfig;
+use solana_keypair::{read_keypair_file, Keypair};
+use solana_message::Instruction;
+use solana_pubkey::Pubkey;
+use solana_rpc_client::rpc_client::RpcClient;
+use solana_signer::Signer;
+use solana_system_interface::instruction::create_account;
+use solana_transaction::Transaction;
+use spl_associated_token_account_interface::{
+    address::get_associated_token_address_with_program_id,
+    instruction::create_associated_token_account_idempotent,
+};
+use spl_token_2022_interface::{
+    extension::{
+        metadata_pointer::{instruction as metadata_pointer, MetadataPointer},
+        BaseStateWithExtensions, ExtensionType, StateWithExtensions,
+    },
+    instruction::{initialize_mint2, mint_to_checked, transfer_checked},
+    state::{Account, Mint},
+};
+use spl_token_metadata_interface::{instruction as metadata_instruction, state::TokenMetadata};
+use std::{env, error::Error, io, path::PathBuf, process::ExitCode, time::Duration};
+
+const NAME: &str = "SNOWNUMB Frost";
+const SYMBOL: &str = "SNOW";
+const URI: &str = "https://raw.githubusercontent.com/S-NOWNUM-B/edu.solana-it-startup.2026/task/07-spl-token/clients/token-client/metadata.json";
+const DECIMALS: u8 = 6;
+const UNIT: u64 = 1_000_000;
+const SUPPLY: u64 = 1_000_000 * UNIT;
+const TRANSFER: u64 = 125_000 * UNIT;
+const USAGE: &str = "SNOWNUMB Frost Token-2022 client\n\
+Usage: token-client demo --recipient <PUBKEY> [--keypair <PATH>] [--url <RPC_URL>]\n\
+       token-client show <MINT> [--url <RPC_URL>]\n\
+Defaults: http://127.0.0.1:8899, ~/.config/solana/id.json\n\
+demo creates a NEW mint on each run; use only localnet or devnet.";
+
+struct Options {
+    command: String,
+    url: String,
+    keypair: Option<PathBuf>,
+    recipient: Option<Pubkey>,
+    mint: Option<Pubkey>,
+}
+
+fn parse_options() -> Result<Option<Options>, Box<dyn Error>> {
+    let mut args = env::args().skip(1);
+    let Some(command) = args.next() else {
+        println!("{USAGE}");
+        return Ok(None);
+    };
+    if matches!(command.as_str(), "--help" | "-h") {
+        println!("{USAGE}");
+        return Ok(None);
+    }
+    if !matches!(command.as_str(), "demo" | "show") {
+        return Err(io::Error::other(format!("Unknown command: {command}\n{USAGE}")).into());
+    }
+    let mint = if command == "show" {
+        Some(
+            args.next()
+                .ok_or_else(|| io::Error::other("show requires a mint address"))?
+                .parse()?,
+        )
+    } else {
+        None
+    };
+    let mut options = Options {
+        command,
+        url: "http://127.0.0.1:8899".into(),
+        keypair: None,
+        recipient: None,
+        mint,
+    };
+    while let Some(option) = args.next() {
+        if !matches!(option.as_str(), "--url" | "--keypair" | "--recipient") {
+            return Err(io::Error::other(format!("Unknown option: {option}")).into());
+        }
+        let value = args
+            .next()
+            .filter(|value| !value.starts_with("--"))
+            .ok_or_else(|| io::Error::other(format!("Missing value for {option}")))?;
+        match option.as_str() {
+            "--url" => options.url = value,
+            "--keypair" => options.keypair = Some(value.into()),
+            "--recipient" => options.recipient = Some(value.parse()?),
+            _ => unreachable!(),
+        }
+    }
+    if options.command == "demo" && options.recipient.is_none() {
+        return Err(io::Error::other("demo requires --recipient <PUBKEY>").into());
+    }
+    if options.command == "show" && (options.recipient.is_some() || options.keypair.is_some()) {
+        return Err(io::Error::other("show only accepts --url; reading needs no wallet").into());
+    }
+    Ok(Some(options))
+}
+
+fn send(
+    client: &RpcClient,
+    payer: &Keypair,
+    instructions: &[Instruction],
+    mint: Option<&Keypair>,
+) -> Result<(), Box<dyn Error>> {
+    let mut signers = vec![payer];
+    if let Some(mint) = mint {
+        signers.push(mint);
+    }
+    let transaction = Transaction::new_signed_with_payer(
+        instructions,
+        Some(&payer.pubkey()),
+        &signers,
+        client.get_latest_blockhash()?,
+    );
+    println!(
+        "Transaction: {}",
+        client.send_and_confirm_transaction(&transaction)?
+    );
+    Ok(())
+}
+
+fn show(client: &RpcClient, mint: &Pubkey) -> Result<(Mint, TokenMetadata), Box<dyn Error>> {
+    let account = client.get_account(mint)?;
+    if account.owner != spl_token_2022_interface::id() {
+        return Err(io::Error::other("Mint is not owned by Token-2022").into());
+    }
+    let state = StateWithExtensions::<Mint>::unpack(&account.data)?;
+    let pointer = state.get_extension::<MetadataPointer>()?;
+    let metadata = state.get_variable_len_extension::<TokenMetadata>()?;
+    if Option::<Pubkey>::from(pointer.metadata_address) != Some(*mint) || metadata.mint != *mint {
+        return Err(io::Error::other("Metadata does not belong to this mint").into());
+    }
+    println!("Mint: {mint}\nProgram: {}\nName: {}\nSymbol: {}\nDecimals: {}\nSupply (raw): {}\nMetadata pointer: {mint}\nURI: {}",
+        account.owner, metadata.name, metadata.symbol, state.base.decimals, state.base.supply, metadata.uri);
+    Ok((state.base, metadata))
+}
+
+fn balance(
+    client: &RpcClient,
+    address: &Pubkey,
+    mint: &Pubkey,
+    owner: &Pubkey,
+) -> Result<u64, Box<dyn Error>> {
+    let account = client.get_account(address)?;
+    if account.owner != spl_token_2022_interface::id() {
+        return Err(io::Error::other("Token account is not owned by Token-2022").into());
+    }
+    let state = StateWithExtensions::<Account>::unpack(&account.data)?;
+    if state.base.mint != *mint || state.base.owner != *owner {
+        return Err(io::Error::other("Unexpected token account mint or owner").into());
+    }
+    Ok(state.base.amount)
+}
+
+fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Box<dyn Error>> {
+    let authority = payer.pubkey();
+    if authority == recipient {
+        return Err(io::Error::other("Recipient must differ from the sender").into());
+    }
+    let mint = Keypair::new();
+    let mint_address = mint.pubkey();
+    let program = spl_token_2022_interface::id();
+    let metadata = TokenMetadata {
+        update_authority: Some(authority).try_into()?,
+        mint: mint_address,
+        name: NAME.into(),
+        symbol: SYMBOL.into(),
+        uri: URI.into(),
+        ..Default::default()
+    };
+    let space =
+        ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::MetadataPointer])?;
+    // Metadata увеличивает аккаунт после initialize_mint2; rent оплачивается заранее.
+    let rent = client.get_minimum_balance_for_rent_exemption(space + metadata.tlv_size_of()?)?;
+    println!("STEP 1  Create mint and onchain metadata");
+    send(
+        client,
+        payer,
+        &[
+            create_account(&authority, &mint_address, rent, space as u64, &program),
+            metadata_pointer::initialize(
+                &program,
+                &mint_address,
+                Some(authority),
+                Some(mint_address),
+            )?,
+            initialize_mint2(&program, &mint_address, &authority, None, DECIMALS)?,
+            metadata_instruction::initialize(
+                &program,
+                &mint_address,
+                &authority,
+                &mint_address,
+                &authority,
+                NAME.into(),
+                SYMBOL.into(),
+                URI.into(),
+            ),
+        ],
+        Some(&mint),
+    )?;
+    let (created, stored_metadata) = show(client, &mint_address)?;
+    if created.supply != 0 || created.decimals != DECIMALS || stored_metadata != metadata {
+        return Err(io::Error::other("Unexpected mint or metadata after creation").into());
+    }
+
+    let source = get_associated_token_address_with_program_id(&authority, &mint_address, &program);
+    let destination =
+        get_associated_token_address_with_program_id(&recipient, &mint_address, &program);
+    println!("\nSTEP 2  Mint 1000000 SNOW\nSender: {authority}\nSender ATA: {source}\nRecipient: {recipient}\nRecipient ATA: {destination}");
+    send(
+        client,
+        payer,
+        &[
+            create_associated_token_account_idempotent(
+                &authority,
+                &authority,
+                &mint_address,
+                &program,
+            ),
+            create_associated_token_account_idempotent(
+                &authority,
+                &recipient,
+                &mint_address,
+                &program,
+            ),
+            mint_to_checked(
+                &program,
+                &mint_address,
+                &source,
+                &authority,
+                &[],
+                SUPPLY,
+                DECIMALS,
+            )?,
+        ],
+        None,
+    )?;
+    let before_source = balance(client, &source, &mint_address, &authority)?;
+    let before_destination = balance(client, &destination, &mint_address, &recipient)?;
+    let before_supply = client
+        .get_token_supply(&mint_address)?
+        .amount
+        .parse::<u64>()?;
+    if before_source != SUPPLY || before_destination != 0 || before_supply != SUPPLY {
+        return Err(io::Error::other("Unexpected balances or supply after minting").into());
+    }
+    println!("Before transfer: sender = 1000000 SNOW, recipient = 0 SNOW");
+
+    println!("\nSTEP 3  Transfer 125000 SNOW with transfer_checked");
+    send(
+        client,
+        payer,
+        &[transfer_checked(
+            &program,
+            &source,
+            &mint_address,
+            &destination,
+            &authority,
+            &[],
+            TRANSFER,
+            created.decimals,
+        )?],
+        None,
+    )?;
+    let after_source = balance(client, &source, &mint_address, &authority)?;
+    let after_destination = balance(client, &destination, &mint_address, &recipient)?;
+    let (final_mint, final_metadata) = show(client, &mint_address)?;
+    if after_source != SUPPLY - TRANSFER
+        || after_destination != TRANSFER
+        || final_mint.supply != SUPPLY
+        || final_metadata != metadata
+    {
+        return Err(io::Error::other("Unexpected final balances, supply or metadata").into());
+    }
+    println!("After transfer: sender = {} SNOW, recipient = {} SNOW\nSupply = {} SNOW (unchanged)\nPASS: metadata, minting, transfer and RPC reads",
+        after_source / UNIT, after_destination / UNIT, final_mint.supply / UNIT);
+    Ok(())
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
+    let Some(options) = parse_options()? else {
+        return Ok(());
+    };
+    let client = RpcClient::new_with_timeout_and_commitment(
+        options.url.clone(),
+        Duration::from_secs(30),
+        CommitmentConfig::confirmed(),
+    );
+    println!("RPC: {}", options.url);
+    if let Some(mint) = options.mint {
+        show(&client, &mint)?;
+        return Ok(());
+    }
+    let path = match options.keypair {
+        Some(path) => path,
+        None => PathBuf::from(
+            env::var_os("HOME")
+                .ok_or_else(|| io::Error::other("HOME is not set; use --keypair"))?,
+        )
+        .join(".config/solana/id.json"),
+    };
+    let payer = read_keypair_file(&path)
+        .map_err(|_| io::Error::other(format!("Cannot read keypair: {}", path.display())))?;
+    demo(
+        &client,
+        &payer,
+        options.recipient.expect("validated recipient"),
+    )
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}

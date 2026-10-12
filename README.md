@@ -1,8 +1,8 @@
 <div align="center">
 
-# Solana Onchain Profile
+# Solana SNOWNUMB Frost
 
-Учебный профиль на PDA: Anchor-программа и Rust-клиент для создания, обновления и чтения данных в Solana.
+Учебный SPL токен Token-2022 с metadata, выпуском и переводом через Rust клиент.
 
 ![Rust](https://img.shields.io/badge/Rust-1.89.0-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Anchor](https://img.shields.io/badge/Anchor-1.1.2-6750A4?style=for-the-badge)
@@ -13,6 +13,7 @@
 
 ## Содержание
 
+- [Задание 7 SPL Token и Token Extensions](#задание-7-spl-token-и-token-extensions)
 - [О проекте](#о-проекте)
 - [Технологии](#технологии)
 - [Архитектура](#архитектура)
@@ -20,6 +21,73 @@
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
+
+## Задание 7 SPL Token и Token Extensions
+
+Ветка `task/07-spl-token` содержит минимальный Rust RPC-клиент для собственного токена **SNOWNUMB Frost (SNOW)**. Название связано с ником SNOWNUMB и темой снега. Клиент напрямую вызывает существующий Token-2022; отдельный смарт-контракт для стандартного токена не требуется.
+
+- `demo` создаёт новый mint с 6 decimals, `MetadataPointer` на сам mint и `TokenMetadata` с name, symbol и URI.
+- Создаёт ATA отправителя и второго кошелька, выпускает 1 000 000 SNOW через `mint_to_checked` и переводит 125 000 через `transfer_checked`.
+- После подтверждения читает RPC и проверяет metadata, владельцев аккаунтов, оба баланса и supply. Итог: 875 000 у отправителя, 125 000 у получателя, supply 1 000 000.
+- `show <MINT>` читает публичные данные без файла кошелька.
+
+Исходники находятся в `clients/token-client/src/main.rs`, публичный JSON для URI — в `clients/token-client/metadata.json`. Mint authority и update authority остаются у отправителя; freeze authority отсутствует. Суммы передаются целыми `u64` в минимальных единицах: 1 SNOW = 1 000 000 единиц. Расширение metadata увеличивает mint, поэтому клиент заранее оплачивает rent за полный размер.
+
+### Запуск токена
+
+Все команды ниже выполняются из корня проекта в терминале macOS zsh/bash. Используйте localnet или devnet и тестовый SOL. Кошельки хранятся только локально в игнорируемой `.keys/`.
+
+Создать отдельные кошельки, сохранив существующие файлы:
+
+```bash
+mkdir -p .keys
+if [ ! -e .keys/token-payer.json ]; then
+  solana-keygen new --no-bip39-passphrase --silent --outfile .keys/token-payer.json
+fi
+if [ ! -e .keys/token-recipient.json ]; then
+  solana-keygen new --no-bip39-passphrase --silent --outfile .keys/token-recipient.json
+fi
+```
+
+Пополнить отправителя тестовым SOL и выполнить демонстрацию:
+
+```bash
+solana airdrop 1 --url devnet --keypair .keys/token-payer.json
+cargo run -p token-client --locked -- demo \
+  --url https://api.devnet.solana.com \
+  --keypair .keys/token-payer.json \
+  --recipient "$(solana-keygen pubkey .keys/token-recipient.json)"
+```
+
+При ограничении devnet faucet используйте уже пополненный devnet-кошелёк через `--keypair`. Каждый `demo` создаёт **новый** mint. Для повторного чтения используйте адрес из вывода:
+
+```bash
+cargo run -p token-client --locked -- show <MINT> --url https://api.devnet.solana.com
+```
+
+Для localnet запустите `solana-test-validator --ledger .anchor/token-ledger` в отдельном терминале zsh/bash, используйте `solana airdrop 1 --url localhost --keypair .keys/token-payer.json` и `--url http://127.0.0.1:8899`. Для задания 7 не нужна Anchor-сборка или загрузка своей программы.
+
+### Проверки токен-клиента
+
+В терминале macOS zsh/bash:
+
+```bash
+cargo fmt -p token-client -- --check
+cargo build -p token-client --locked
+cargo clippy -p token-client --all-targets --locked -- -D warnings
+```
+
+Проверка взаимодействия с сетью — полный `demo` с итоговым `PASS`, затем независимый `show`. `PASS` выводится только после проверки данных RPC. Неизвестные команды, отсутствующий recipient, неверные адреса и пропущенные значения параметров отклоняются до отправки транзакций.
+
+12 октября 2026 года выполнено в **devnet**:
+
+- [Mint SNOWNUMB Frost](https://explorer.solana.com/address/DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW?cluster=devnet).
+- [Создание mint и metadata](https://explorer.solana.com/tx/27ouwgjsVDoNr8PCvyW7fmFDkCzEiRM22kzpgjNwMEffBLEcpchCtg2BoophNb3Mq76km2dGbwCH57GZqkG6TWx1?cluster=devnet).
+- [Выпуск 1 000 000 SNOW](https://explorer.solana.com/tx/33Ae8Wr8AQ6iPRd1KmmUhn8uUmkzfCAMfMzC3XjKfF5epazxfgZoPSHVQpqjHXYPUYpzSrDgcSSSjW4mH4fbZitU?cluster=devnet).
+- [Перевод 125 000 SNOW](https://explorer.solana.com/tx/2AzKg6955QUmVhXNVsBtkQSoB9n23nLuKi9LgfMJgGMVtRRju4rRnqgG5Q2nyADNZL7H5wnkZpAYGDCQ6eJQT39M?cluster=devnet).
+
+Официальные источники: [Token-2022 Metadata](https://solana.com/docs/tokens/extensions/metadata), [Token Extensions](https://www.solana-program.com/docs/token-2022/extensions).
+
 
 ## О проекте
 
@@ -34,6 +102,7 @@
 | Часть проекта | Технологии |
 | :-- | :-- |
 | Программы | Rust 1.89.0, Anchor 1.1.2, Solana CLI 3.1.10 |
+| Token-клиент | Rust, `solana-rpc-client` 3.1.14, Token-2022 interface 2.1.0, metadata interface 0.8.0 |
 | Profile-клиент | Rust, Cargo, `solana-rpc-client` 3.1.14 |
 | Тесты программ | Rust, LiteSVM 0.10.0 |
 
@@ -41,6 +110,7 @@
 
 | Каталог | Ответственность |
 | :-- | :-- |
+| `clients/token-client/` | Mint с metadata, выпуск и перевод SNOW, публичное чтение |
 | `programs/onchain-profile/` | Anchor-инструкции и аккаунт Profile |
 | `clients/profile-client/` | Подписание транзакций, отправка в RPC и чтение профиля |
 | `programs/counter/`, `clients/counter-client/` | Счётчик из задания №5 |
