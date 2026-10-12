@@ -1,8 +1,8 @@
 <div align="center">
 
-# Solana SNOWNUMB Frost
+# Solana SNOWNUMB TOKEN
 
-Учебный SPL токен Token-2022 с metadata, выпуском и переводом через Rust клиент.
+SPL токен Token-2022 с metadata, выпуском и переводом через Rust клиент.
 
 ![Rust](https://img.shields.io/badge/Rust-1.89.0-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Anchor](https://img.shields.io/badge/Anchor-1.1.2-6750A4?style=for-the-badge)
@@ -24,14 +24,14 @@
 
 ## Задание 7 SPL Token и Token Extensions
 
-Ветка `task/07-spl-token` содержит минимальный Rust RPC-клиент для собственного токена **SNOWNUMB Frost (SNOW)**. Название связано с ником SNOWNUMB и темой снега. Клиент напрямую вызывает существующий Token-2022; отдельный смарт-контракт для стандартного токена не требуется.
+Ветка `task/09-solana-defi` сохраняет минимальный Rust RPC-клиент для собственного токена **SNOWNUMB TOKEN (SNTOK)**. Описание токена — The Best Token. Клиент напрямую вызывает существующий Token-2022; отдельный смарт-контракт для стандартного токена не требуется.
 
 - `demo` создаёт новый mint с 6 decimals, `MetadataPointer` на сам mint и `TokenMetadata` с name, symbol и URI.
-- Создаёт ATA отправителя и второго кошелька, выпускает 1 000 000 SNOW через `mint_to_checked` и переводит 125 000 через `transfer_checked`.
+- Создаёт ATA отправителя и второго кошелька, выпускает 1 000 000 SNTOK через `mint_to_checked` и переводит 125 000 через `transfer_checked`.
 - После подтверждения читает RPC и проверяет metadata, владельцев аккаунтов, оба баланса и supply. Итог: 875 000 у отправителя, 125 000 у получателя, supply 1 000 000.
 - `show <MINT>` читает публичные данные без файла кошелька.
 
-Исходники находятся в `clients/token-client/src/main.rs`, публичный JSON для URI — в `clients/token-client/metadata.json`. Mint authority и update authority остаются у отправителя; freeze authority отсутствует. Суммы передаются целыми `u64` в минимальных единицах: 1 SNOW = 1 000 000 единиц. Расширение metadata увеличивает mint, поэтому клиент заранее оплачивает rent за полный размер.
+Исходники находятся в `clients/token-client/src/main.rs`, публичный JSON для URI — в `clients/token-client/metadata.json`. Mint authority и update authority остаются у отправителя; freeze authority отсутствует. Суммы передаются целыми `u64` в минимальных единицах: 1 SNTOK = 1 000 000 единиц. Расширение metadata увеличивает mint, поэтому клиент заранее оплачивает rent за полный размер.
 
 ### Запуск токена
 
@@ -67,6 +67,15 @@ cargo run -p token-client --locked -- show <MINT> --url https://api.devnet.solan
 
 Для localnet запустите `solana-test-validator --ledger .anchor/token-ledger` в отдельном терминале zsh/bash, используйте `solana airdrop 1 --url localhost --keypair .keys/token-payer.json` и `--url http://127.0.0.1:8899`. Для задания 7 не нужна Anchor-сборка или загрузка своей программы.
 
+Обновить metadata существующего mint из `metadata.json`, сохранив supply и адрес:
+
+```bash
+cargo run -p token-client --locked -- update-metadata DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW \
+  --url https://api.devnet.solana.com --keypair .keys/devnet-payer.json
+```
+
+Имя, символ и описание клиента берутся из одного `metadata.json`. Команда обновляет onchain-поля name, symbol, uri и description, доплачивает rent при увеличении metadata и проверяет сохранность mint.
+
 ### Проверки токен-клиента
 
 В терминале macOS zsh/bash:
@@ -79,12 +88,13 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 
 Проверка взаимодействия с сетью — полный `demo` с итоговым `PASS`, затем независимый `show`. `PASS` выводится только после проверки данных RPC. Неизвестные команды, отсутствующий recipient, неверные адреса и пропущенные значения параметров отклоняются до отправки транзакций.
 
-12 октября 2026 года выполнено в **devnet**:
+Подтверждённые операции в **devnet**:
 
-- [Mint SNOWNUMB Frost](https://explorer.solana.com/address/DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW?cluster=devnet).
+- [Обновление metadata](https://explorer.solana.com/tx/56CB2A1RNsK9pfEYDTD3aj5WRKN3SDNkkzZS1uBXpq6M6AM3FqrsNYygrqqrFHrFTWBHrgPjJCkQZmWXaNdixvKX?cluster=devnet).
+- [Mint SNOWNUMB TOKEN](https://explorer.solana.com/address/DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW?cluster=devnet).
 - [Создание mint и metadata](https://explorer.solana.com/tx/27ouwgjsVDoNr8PCvyW7fmFDkCzEiRM22kzpgjNwMEffBLEcpchCtg2BoophNb3Mq76km2dGbwCH57GZqkG6TWx1?cluster=devnet).
-- [Выпуск 1 000 000 SNOW](https://explorer.solana.com/tx/33Ae8Wr8AQ6iPRd1KmmUhn8uUmkzfCAMfMzC3XjKfF5epazxfgZoPSHVQpqjHXYPUYpzSrDgcSSSjW4mH4fbZitU?cluster=devnet).
-- [Перевод 125 000 SNOW](https://explorer.solana.com/tx/2AzKg6955QUmVhXNVsBtkQSoB9n23nLuKi9LgfMJgGMVtRRju4rRnqgG5Q2nyADNZL7H5wnkZpAYGDCQ6eJQT39M?cluster=devnet).
+- [Выпуск 1 000 000 SNTOK](https://explorer.solana.com/tx/33Ae8Wr8AQ6iPRd1KmmUhn8uUmkzfCAMfMzC3XjKfF5epazxfgZoPSHVQpqjHXYPUYpzSrDgcSSSjW4mH4fbZitU?cluster=devnet).
+- [Перевод 125 000 SNTOK](https://explorer.solana.com/tx/2AzKg6955QUmVhXNVsBtkQSoB9n23nLuKi9LgfMJgGMVtRRju4rRnqgG5Q2nyADNZL7H5wnkZpAYGDCQ6eJQT39M?cluster=devnet).
 
 Официальные источники: [Token-2022 Metadata](https://solana.com/docs/tokens/extensions/metadata), [Token Extensions](https://www.solana-program.com/docs/token-2022/extensions).
 
@@ -110,7 +120,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 
 | Каталог | Ответственность |
 | :-- | :-- |
-| `clients/token-client/` | Mint с metadata, выпуск и перевод SNOW, публичное чтение |
+| `clients/token-client/` | Mint с metadata, выпуск и перевод SNTOK, публичное чтение |
 | `programs/onchain-profile/` | Anchor-инструкции и аккаунт Profile |
 | `clients/profile-client/` | Подписание транзакций, отправка в RPC и чтение профиля |
 | `programs/counter/`, `clients/counter-client/` | Счётчик из задания №5 |

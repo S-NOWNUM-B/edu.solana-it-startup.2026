@@ -1,10 +1,11 @@
+use serde::Deserialize;
 use solana_commitment_config::CommitmentConfig;
 use solana_keypair::{read_keypair_file, Keypair};
 use solana_message::Instruction;
 use solana_pubkey::Pubkey;
 use solana_rpc_client::rpc_client::RpcClient;
 use solana_signer::Signer;
-use solana_system_interface::instruction::create_account;
+use solana_system_interface::instruction::{create_account, transfer};
 use solana_transaction::Transaction;
 use spl_associated_token_account_interface::{
     address::get_associated_token_address_with_program_id,
@@ -18,21 +19,34 @@ use spl_token_2022_interface::{
     instruction::{initialize_mint2, mint_to_checked, transfer_checked},
     state::{Account, Mint},
 };
-use spl_token_metadata_interface::{instruction as metadata_instruction, state::TokenMetadata};
+use spl_token_metadata_interface::{
+    instruction as metadata_instruction,
+    state::{Field, TokenMetadata},
+};
 use std::{env, error::Error, io, path::PathBuf, process::ExitCode, time::Duration};
 
-const NAME: &str = "SNOWNUMB Frost";
-const SYMBOL: &str = "SNOW";
-const URI: &str = "https://raw.githubusercontent.com/S-NOWNUM-B/edu.solana-it-startup.2026/task/07-spl-token/clients/token-client/metadata.json";
+const URI: &str = "https://raw.githubusercontent.com/S-NOWNUM-B/edu.solana-it-startup.2026/task/09-solana-defi/clients/token-client/metadata.json";
 const DECIMALS: u8 = 6;
 const UNIT: u64 = 1_000_000;
 const SUPPLY: u64 = 1_000_000 * UNIT;
 const TRANSFER: u64 = 125_000 * UNIT;
-const USAGE: &str = "SNOWNUMB Frost Token-2022 client\n\
+const USAGE: &str = "Token-2022 client\n\
 Usage: token-client demo --recipient <PUBKEY> [--keypair <PATH>] [--url <RPC_URL>]\n\
        token-client show <MINT> [--url <RPC_URL>]\n\
+       token-client update-metadata <MINT> [--keypair <PATH>] [--url <RPC_URL>]\n\
 Defaults: http://127.0.0.1:8899, ~/.config/solana/id.json\n\
 demo creates a NEW mint on each run; use only localnet or devnet.";
+
+#[derive(Deserialize)]
+struct TokenInfo {
+    name: String,
+    symbol: String,
+    description: String,
+}
+
+fn token_info() -> Result<TokenInfo, Box<dyn Error>> {
+    Ok(serde_json::from_str(include_str!("../metadata.json"))?)
+}
 
 struct Options {
     command: String,
@@ -52,13 +66,13 @@ fn parse_options() -> Result<Option<Options>, Box<dyn Error>> {
         println!("{USAGE}");
         return Ok(None);
     }
-    if !matches!(command.as_str(), "demo" | "show") {
+    if !matches!(command.as_str(), "demo" | "show" | "update-metadata") {
         return Err(io::Error::other(format!("Unknown command: {command}\n{USAGE}")).into());
     }
-    let mint = if command == "show" {
+    let mint = if command != "demo" {
         Some(
             args.next()
-                .ok_or_else(|| io::Error::other("show requires a mint address"))?
+                .ok_or_else(|| io::Error::other("This command requires a mint address"))?
                 .parse()?,
         )
     } else {
@@ -88,6 +102,9 @@ fn parse_options() -> Result<Option<Options>, Box<dyn Error>> {
     }
     if options.command == "demo" && options.recipient.is_none() {
         return Err(io::Error::other("demo requires --recipient <PUBKEY>").into());
+    }
+    if options.command == "update-metadata" && options.recipient.is_some() {
+        return Err(io::Error::other("update-metadata does not accept --recipient").into());
     }
     if options.command == "show" && (options.recipient.is_some() || options.keypair.is_some()) {
         return Err(io::Error::other("show only accepts --url; reading needs no wallet").into());
@@ -131,6 +148,13 @@ fn show(client: &RpcClient, mint: &Pubkey) -> Result<(Mint, TokenMetadata), Box<
     }
     println!("Mint: {mint}\nProgram: {}\nName: {}\nSymbol: {}\nDecimals: {}\nSupply (raw): {}\nMetadata pointer: {mint}\nURI: {}",
         account.owner, metadata.name, metadata.symbol, state.base.decimals, state.base.supply, metadata.uri);
+    if let Some((_, description)) = metadata
+        .additional_metadata
+        .iter()
+        .find(|(key, _)| key == "description")
+    {
+        println!("Description: {description}");
+    }
     Ok((state.base, metadata))
 }
 
@@ -152,6 +176,8 @@ fn balance(
 }
 
 fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Box<dyn Error>> {
+    let info = token_info()?;
+    let symbol = &info.symbol;
     let authority = payer.pubkey();
     if authority == recipient {
         return Err(io::Error::other("Recipient must differ from the sender").into());
@@ -162,10 +188,10 @@ fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Bo
     let metadata = TokenMetadata {
         update_authority: Some(authority).try_into()?,
         mint: mint_address,
-        name: NAME.into(),
-        symbol: SYMBOL.into(),
+        name: info.name.clone(),
+        symbol: info.symbol.clone(),
         uri: URI.into(),
-        ..Default::default()
+        additional_metadata: vec![("description".into(), info.description.clone())],
     };
     let space =
         ExtensionType::try_calculate_account_len::<Mint>(&[ExtensionType::MetadataPointer])?;
@@ -190,9 +216,16 @@ fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Bo
                 &authority,
                 &mint_address,
                 &authority,
-                NAME.into(),
-                SYMBOL.into(),
+                info.name.clone(),
+                info.symbol.clone(),
                 URI.into(),
+            ),
+            metadata_instruction::update_field(
+                &program,
+                &mint_address,
+                &authority,
+                Field::Key("description".into()),
+                info.description.clone(),
             ),
         ],
         Some(&mint),
@@ -205,7 +238,7 @@ fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Bo
     let source = get_associated_token_address_with_program_id(&authority, &mint_address, &program);
     let destination =
         get_associated_token_address_with_program_id(&recipient, &mint_address, &program);
-    println!("\nSTEP 2  Mint 1000000 SNOW\nSender: {authority}\nSender ATA: {source}\nRecipient: {recipient}\nRecipient ATA: {destination}");
+    println!("\nSTEP 2  Mint 1000000 {symbol}\nSender: {authority}\nSender ATA: {source}\nRecipient: {recipient}\nRecipient ATA: {destination}");
     send(
         client,
         payer,
@@ -243,9 +276,9 @@ fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Bo
     if before_source != SUPPLY || before_destination != 0 || before_supply != SUPPLY {
         return Err(io::Error::other("Unexpected balances or supply after minting").into());
     }
-    println!("Before transfer: sender = 1000000 SNOW, recipient = 0 SNOW");
+    println!("Before transfer: sender = 1000000 {symbol}, recipient = 0 {symbol}");
 
-    println!("\nSTEP 3  Transfer 125000 SNOW with transfer_checked");
+    println!("\nSTEP 3  Transfer 125000 {symbol} with transfer_checked");
     send(
         client,
         payer,
@@ -271,8 +304,52 @@ fn demo(client: &RpcClient, payer: &Keypair, recipient: Pubkey) -> Result<(), Bo
     {
         return Err(io::Error::other("Unexpected final balances, supply or metadata").into());
     }
-    println!("After transfer: sender = {} SNOW, recipient = {} SNOW\nSupply = {} SNOW (unchanged)\nPASS: metadata, minting, transfer and RPC reads",
+    println!("After transfer: sender = {} {symbol}, recipient = {} {symbol}\nSupply = {} {symbol} (unchanged)\nPASS: metadata, minting, transfer and RPC reads",
         after_source / UNIT, after_destination / UNIT, final_mint.supply / UNIT);
+    Ok(())
+}
+
+fn update_metadata(
+    client: &RpcClient,
+    payer: &Keypair,
+    mint: &Pubkey,
+) -> Result<(), Box<dyn Error>> {
+    let info = token_info()?;
+    let (before, mut expected) = show(client, mint)?;
+    if Option::<Pubkey>::from(expected.update_authority) != Some(payer.pubkey()) {
+        return Err(io::Error::other("Wallet is not the metadata update authority").into());
+    }
+    let account = client.get_account(mint)?;
+    let old_metadata_size = expected.tlv_size_of()?;
+    let mut max_size = account.data.len();
+    let fields = [
+        (Field::Name, info.name),
+        (Field::Symbol, info.symbol),
+        (Field::Uri, URI.into()),
+        (Field::Key("description".into()), info.description),
+    ];
+    let mut instructions = Vec::new();
+    for (field, value) in fields {
+        expected.update(field.clone(), value.clone());
+        max_size = max_size.max(account.data.len() - old_metadata_size + expected.tlv_size_of()?);
+        instructions.push(metadata_instruction::update_field(
+            &spl_token_2022_interface::id(),
+            mint,
+            &payer.pubkey(),
+            field,
+            value,
+        ));
+    }
+    let rent = client.get_minimum_balance_for_rent_exemption(max_size)?;
+    if rent > account.lamports {
+        instructions.insert(0, transfer(&payer.pubkey(), mint, rent - account.lamports));
+    }
+    send(client, payer, &instructions, None)?;
+    let (after, metadata) = show(client, mint)?;
+    if after != before || metadata != expected {
+        return Err(io::Error::other("Metadata update verification failed").into());
+    }
+    println!("PASS: metadata updated; mint address, decimals, authorities and supply preserved");
     Ok(())
 }
 
@@ -286,8 +363,8 @@ fn run() -> Result<(), Box<dyn Error>> {
         CommitmentConfig::confirmed(),
     );
     println!("RPC: {}", options.url);
-    if let Some(mint) = options.mint {
-        show(&client, &mint)?;
+    if options.command == "show" {
+        show(&client, &options.mint.expect("validated mint"))?;
         return Ok(());
     }
     let path = match options.keypair {
@@ -300,6 +377,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     };
     let payer = read_keypair_file(&path)
         .map_err(|_| io::Error::other(format!("Cannot read keypair: {}", path.display())))?;
+    if options.command == "update-metadata" {
+        return update_metadata(&client, &payer, &options.mint.expect("validated mint"));
+    }
     demo(
         &client,
         &payer,

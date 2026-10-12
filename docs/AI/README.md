@@ -1,0 +1,8 @@
+# AI router
+
+Начните с [правил](AGENTS.md).
+
+- Зависимости и сборка: [Cargo.toml](../../Cargo.toml), [Cargo.lock](../../Cargo.lock), manifests затронутого клиента.
+- Токен и metadata: [token-client](../../clients/token-client/) и его metadata.json.
+- Реализация и запуск: [README](../../README.md), существующие клиенты в clients/.
+- Проверки: Cargo format, Clippy и tests затронутых клиентов, затем реальный RPC-запуск для изменённых операций.
