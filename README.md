@@ -2,7 +2,7 @@
 
 # Solana SNOWNUMB TOKEN
 
-SPL токен Token-2022 с metadata, выпуском и переводом через Rust клиент.
+Токен SNTOK и DeFi через Orca Whirlpools: metadata, выпуск, перевод, ликвидность и обмен SOL → SNTOK.
 
 ![Rust](https://img.shields.io/badge/Rust-1.89.0-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Anchor](https://img.shields.io/badge/Anchor-1.1.2-6750A4?style=for-the-badge)
@@ -13,6 +13,7 @@ SPL токен Token-2022 с metadata, выпуском и переводом ч
 
 ## Содержание
 
+- [Задание 9 DeFi на Solana](#задание-9-defi-на-solana)
 - [Задание 7 SPL Token и Token Extensions](#задание-7-spl-token-и-token-extensions)
 - [О проекте](#о-проекте)
 - [Технологии](#технологии)
@@ -21,6 +22,64 @@ SPL токен Token-2022 с metadata, выпуском и переводом ч
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
+
+## Задание 9 DeFi на Solana
+
+Ветка `task/09-solana-defi` интегрирует **Orca Whirlpools** через Rust SDK 8.0.0. `clients/defi-client/` создаёт пул **SNTOK/wSOL**, открывает позицию ликвидности, получает котировку и выполняет обмен SOL → SNTOK. Используется существующий mint **SNOWNUMB TOKEN (SNTOK)** из задания 7; имя, символ и описание The Best Token синхронизированы в JSON и onchain metadata.
+
+### Протоколы и выбор интеграции
+
+| Протокол | Возможности и способ интеграции |
+| :-- | :-- |
+| [Orca Whirlpools](https://docs.orca.so/) | Пулы, позиции ликвидности и swaps; [официальный Rust SDK](https://github.com/orca-so/whirlpools/tree/main/rust-sdk/whirlpool) строит инструкции по данным RPC |
+| [Raydium Trade API](https://github.com/raydium-io/raydium-docs-v1/blob/main/sdk-api/trade-api.mdx) | HTTP-котировка маршрута и построение транзакции, которую клиент подписывает и отправляет |
+
+Выбран Orca: Rust SDK позволяет интегрировать и ликвидность собственного Token-2022, и обмен в devnet в существующий Cargo workspace. Raydium рассмотрен как другой способ интеграции swap; клиент использует Orca.
+
+### Пул и позиция
+
+| Объект в devnet | Адрес |
+| :-- | :-- |
+| SNTOK mint | `DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW` |
+| Orca program | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` |
+| [SNTOK/wSOL pool](https://explorer.solana.com/address/HWvtqsdnTpEKBzPwDPDLtmfgtF3zGv1D7J8mTq5Btd9w?cluster=devnet) | `HWvtqsdnTpEKBzPwDPDLtmfgtF3zGv1D7J8mTq5Btd9w` |
+| Position mint | `2PLHgGVJm9g3dN28tuJCBmDLuioqLMte5MdXwFEyTeyk` |
+
+Splash pool использует позицию на полном диапазоне. `setup` вносит до 0.005 SOL и 500 SNTOK; начальная цена задана как 100 000 SNTOK/SOL для этого пула. Комиссия пула — 1%. Цена котировки зависит от состояния и ликвидности пула.
+
+### Команды DeFi-клиента
+
+Из корня проекта в терминале macOS zsh/bash, с уже пополненным devnet-кошельком владельца SNTOK:
+
+```bash
+cargo run -p defi-client --locked -- setup --keypair .keys/devnet-payer.json
+cargo run -p defi-client --locked -- quote --owner 9KmHj9ZwNcPysvJM3CYAuc7Jp1hzVbEC7QaBAT7uD7N2
+cargo run -p defi-client --locked -- swap --keypair .keys/devnet-payer.json
+```
+
+- `setup` создаёт отсутствующий пул и одну позицию; повторный запуск с `.keys/defi-position.json` проверяет NFT владельца и использует существующую позицию без нового внесения. Файл сохраняется до отправки: при сбое нужно проверить статус позиции, прежде чем запускать создание заново.
+- `quote` читает котировку без файла кошелька при `--owner`. По умолчанию вход — 100 000 lamports (0.0001 SOL), slippage — 100 bps (1%).
+- `swap` заново получает котировку, симулирует подписанную транзакцию, подтверждает отправку и сверяет прирост SNTOK с минимальным выходом.
+- `--input-lamports <INTEGER>` и `--slippage-bps <1..1000>` задают параметры quote/swap; `--url` задаёт RPC, `--position-keypair` — путь позиции для setup.
+
+Перед операциями клиент проверяет genesis hash devnet, владельца программы пула, его config и mints. Суммы рассчитываются в целых минимальных единицах. Симуляция ограничивает расход setup до 0.18 SOL, swap — входом плюс 100 000 lamports на сетевые расходы. Ключи остаются в игнорируемой `.keys/`, Word-отчёты сохраняются локально.
+
+### Подтверждённый результат
+
+Создание пула и внесение ликвидности прошли симуляцию и подтверждение. Обмен **0.0001 SOL → 9.707785 SNTOK** выполнен при минимальном выходе **9.610707 SNTOK**. Расход SOL с сетевой комиссией — **0.00011 SOL**; комиссия сделки 0.000001 SOL входит в сумму обмена. Баланс изменился с 874 500 до **874 509.707785 SNTOK**; независимое чтение через SPL Token CLI подтвердило результат.
+
+- [Создание пула](https://explorer.solana.com/tx/5f65VLtHLhxHgh9MZpDkHMZJHBNBWnAPtsowxPx3x9Af81UBrb4Hdha39grABUrhjWjjxBs1ruB8LoTgfDpagBK2?cluster=devnet).
+- [Открытие позиции и ликвидность](https://explorer.solana.com/tx/5EMGEQRfXf79BPvWjzjE1tSxt2MiUAZwicBwujn5aA81t7Y28PwdxmjXRwPLBS63jcuBHGvf4K5Eh1un3QZKKF2b?cluster=devnet).
+- [Обмен SOL → SNTOK](https://explorer.solana.com/tx/JnsUbkhJHCfQL8MrxTTxFa6s8bJDV4XYG5YYdjaooyRP9TqqVe3gqL9AAbdHs6A1D7HRe7prgGXMyh4MmUNVpba?cluster=devnet).
+
+Повторный `setup` подтвердил использование той же позиции без транзакции. Запрос quote к mainnet RPC отклонён проверкой сети до чтения кошелька и отправки. Format, Clippy и три теста клиента прошли:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy -p defi-client -p token-client --all-targets --locked -- -D warnings
+cargo test -p defi-client --locked
+cargo build -p defi-client --locked
+```
 
 ## Задание 7 SPL Token и Token Extensions
 
@@ -112,6 +171,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 | Часть проекта | Технологии |
 | :-- | :-- |
 | Программы | Rust 1.89.0, Anchor 1.1.2, Solana CLI 3.1.10 |
+| DeFi-клиент | Rust, Orca Whirlpools SDK/client 8.0.0, Tokio 1.53.1 |
 | Token-клиент | Rust, `solana-rpc-client` 3.1.14, Token-2022 interface 2.1.0, metadata interface 0.8.0 |
 | Profile-клиент | Rust, Cargo, `solana-rpc-client` 3.1.14 |
 | Тесты программ | Rust, LiteSVM 0.10.0 |
@@ -120,6 +180,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 
 | Каталог | Ответственность |
 | :-- | :-- |
+| `clients/defi-client/` | Пул SNTOK/wSOL, позиция ликвидности, quote и swap через Orca |
 | `clients/token-client/` | Mint с metadata, выпуск и перевод SNTOK, публичное чтение |
 | `programs/onchain-profile/` | Anchor-инструкции и аккаунт Profile |
 | `clients/profile-client/` | Подписание транзакций, отправка в RPC и чтение профиля |
