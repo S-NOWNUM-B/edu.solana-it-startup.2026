@@ -1,8 +1,11 @@
+pub mod compose_transfer;
 pub mod create_token;
 pub mod create_token_account;
 pub mod mint_tokens;
 pub mod transfer_tokens;
 
+#[allow(ambiguous_glob_reexports)]
+pub use compose_transfer::*;
 #[allow(ambiguous_glob_reexports)]
 pub use create_token::*;
 #[allow(ambiguous_glob_reexports)]

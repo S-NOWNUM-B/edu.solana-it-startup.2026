@@ -1,0 +1,16 @@
+[package]
+name = "composable-client"
+version = "0.1.0"
+description = "Localnet RPC demonstration of atomic CPI composition"
+edition = "2021"
+
+[dependencies]
+anchor-lang = "=1.1.2"
+anchor-spl = { version = "=1.1.2", features = ["associated_token", "token_2022"] }
+solana-level-1-token-starter = { path = "../../programs/solana-level-1-token-starter", features = ["no-entrypoint"] }
+solana-commitment-config = "=3.0.0"
+solana-keypair = "=3.1.2"
+solana-message = "=3.0.1"
+solana-rpc-client = { version = "=3.1.14", default-features = false }
+solana-signer = "=3.0.0"
+solana-transaction = "=3.0.2"

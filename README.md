@@ -13,6 +13,7 @@
 
 ## Содержание
 
+- [Задание 11 CPI и composable applications](#задание-11-cpi-и-composable-applications)
 - [Задание 10 RPC dashboard](#задание-10-rpc-dashboard)
 - [Задание 9 DeFi на Solana](#задание-9-defi-на-solana)
 - [Задание 7 SPL Token и Token Extensions](#задание-7-spl-token-и-token-extensions)
@@ -23,6 +24,57 @@
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
+
+## Задание 11 CPI и composable applications
+
+Ветка `task/11-cpi-composable` добавляет `compose_transfer` в существующую Anchor-программу и Rust RPC-клиент `clients/composable-client/`. Одна инструкция вызывает три существующие Solana Programs: Associated Token создаёт ATA получателя идемпотентно, System переводит SOL, Token Program выполняет `transfer_checked`. Поддерживаются SPL Token и Token-2022. Все три действия входят в одну транзакцию: ошибка последнего CPI откатывает создание ATA и перевод SOL; комиссия не возвращается.
+
+### Запуск композиции
+
+Из корня проекта в терминале macOS zsh/bash, с Rust и Solana из раздела технологий:
+
+```bash
+# Собрать SBF существующей программы
+cargo build-sbf --manifest-path programs/solana-level-1-token-starter/Cargo.toml
+```
+
+В отдельном терминале macOS zsh/bash из корня проекта:
+
+```bash
+# Запустить localnet с собранной программой
+mkdir -p .anchor
+solana-test-validator \
+  --bpf-program 3pX5NKLru1UBDVckynWQxsgnJeUN3N1viy36Gk9TSn8d target/deploy/solana_level_1_token_starter.so \
+  --ledger .anchor/cpi-ledger --bind-address 127.0.0.1
+```
+
+В первом терминале macOS zsh/bash:
+
+```bash
+# Выполнить simulation, две композиции и проверить состояние через RPC
+cargo run -p composable-client --locked -- demo
+```
+
+Клиент работает только с `http://127.0.0.1:8899`, проверяет genesis против публичных кластеров, использует кошельки в памяти и новый mint только в localnet. Существующий SNTOK в devnet не изменяется. Повторный запуск создаёт новый набор локальных аккаунтов; ключи не сохраняются и не выводятся.
+
+Перед первой композицией клиент моделирует перевод сверх доступного supply и ожидает ошибку. Затем он дважды переводит по 125 токенов и 0.01 SOL. Итоговый RPC readback: **750 токенов у отправителя, 250 у получателя, получателю начислено 0.02 SOL**. Второй перевод использует уже существующий ATA. Итоговый `PASS` печатается после проверки балансов и program owner счёта.
+
+### Безопасность и проверки CPI
+
+Программа требует подпись payer, положительные суммы, разных payer/recipient и канонический ATA. Anchor constraints проверяют mint, authority исходного счёта, владельца token accounts и идентификаторы вызываемых программ. Суммы передаются целыми минимальными единицами; decimals берутся из mint. Дополнительные аккаунты для Token-2022 extensions вроде transfer hooks клиент не поддерживает.
+
+В терминале macOS zsh/bash из корня проекта после SBF-сборки:
+
+```bash
+# Проверить формат, типы и выполнение CPI в LiteSVM
+cargo fmt --all -- --check
+cargo clippy -p composable-client -p solana-level-1-token-starter --all-targets --locked -- -D warnings
+cargo test -p composable-client -p solana-level-1-token-starter --locked
+```
+
+Семь тестов `tests/compose_transfer.rs` выполняют SBF для обоих token programs: успешные CPI, повтор с существующим ATA, откат после недостатка токенов, нулевые суммы, неверные mint/authority/token program/ATA, одинаковый получатель и отсутствие подписи payer. Проверка отката отправляет отклоняемую транзакцию в LiteSVM и читает состояние; отрицательная проверка RPC-клиента использует simulation. Подтверждённые RPC-транзакции выполняются в localnet, отдельная публикация программы в devnet не требуется для запуска.
+
+Официальное описание [CPI](https://solana.com/docs/core/cpi) объясняет вызовы между программами; [Anchor transfer_checked](https://www.anchor-lang.com/docs/tokens/basics/transfer-tokens) описывает используемый token interface. Word-отчёт с реальными снимками исходников, логов и RPC-проверок сохраняется локально вне Git.
 
 ## Задание 10 RPC dashboard
 
@@ -238,6 +290,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 | Каталог | Ответственность |
 | :-- | :-- |
 | `clients/dashboard-client/` | HTTP API публичных данных и веб-dashboard Solana |
+| `clients/composable-client/` | Localnet RPC-демонстрация атомарных CPI через Associated Token, System и Token Program |
 | `clients/defi-client/` | Пул SNTOK/wSOL, позиция ликвидности, quote и swap через Orca |
 | `clients/token-client/` | Mint с metadata, выпуск и перевод SNTOK, публичное чтение |
 | `programs/onchain-profile/` | Anchor-инструкции и аккаунт Profile |

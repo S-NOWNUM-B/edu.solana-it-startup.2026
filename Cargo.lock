@@ -1130,6 +1130,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "composable-client"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "solana-commitment-config",
+ "solana-keypair",
+ "solana-level-1-token-starter",
+ "solana-message",
+ "solana-rpc-client",
+ "solana-signer",
+ "solana-transaction",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"

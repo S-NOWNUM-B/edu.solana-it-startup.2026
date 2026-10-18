@@ -6,4 +6,8 @@ pub enum TokenStarterError {
     AmountMustBePositive,
     #[msg("Source and destination token accounts must be different")]
     SourceEqualsDestination,
+    #[msg("Payer and recipient wallets must be different")]
+    PayerEqualsRecipient,
+    #[msg("Recipient token account must be its associated token address")]
+    InvalidRecipientTokenAccount,
 }

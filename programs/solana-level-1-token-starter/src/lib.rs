@@ -26,4 +26,12 @@ pub mod solana_level_1_token_starter {
     pub fn transfer_tokens(ctx: Context<TransferTokens>, amount: u64) -> Result<()> {
         instructions::transfer_tokens::handler(ctx, amount)
     }
+
+    pub fn compose_transfer(
+        ctx: Context<ComposeTransfer>,
+        token_amount: u64,
+        lamports: u64,
+    ) -> Result<()> {
+        instructions::compose_transfer::handler(ctx, token_amount, lamports)
+    }
 }
