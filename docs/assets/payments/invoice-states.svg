@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="650" viewBox="0 0 1120 650" role="img" aria-labelledby="title desc">
+<title id="title">SNOWNUMB Pay — состояния счёта</title><desc id="desc">Проектная схема SNOWNUMB Pay</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#555"/></marker></defs>
+<rect width="1120" height="650" fill="white"/>
+<text x="40" y="46" font-family="Arial,sans-serif" font-size="28" font-weight="bold">SNOWNUMB Pay — состояния счёта</text>
+<path d="M310 172 L425 172" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="317" y="151" font-family="Arial,sans-serif" font-size="17" fill="#444">публикация</text>
+<path d="M695 172 L810 172" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="738" y="151" font-family="Arial,sans-serif" font-size="17" fill="#444">RPC</text>
+<path d="M945 235 L945 365" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="960" y="305" font-family="Arial,sans-serif" font-size="17" fill="#444">finalized</text>
+<path d="M560 235 L560 365" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="576" y="305" font-family="Arial,sans-serif" font-size="17" fill="#444">закрыть</text>
+<path d="M810 225 L748 282 L688 235" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="704" y="312" font-family="Arial,sans-serif" font-size="17" fill="#444">платёж исчез</text>
+<rect x="40" y="110" width="270" height="125" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="175.0" y="144" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">draft</text>
+<text x="175.0" y="176" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Черновик</text>
+<text x="175.0" y="201" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Можно изменить условия</text>
+<rect x="425" y="110" width="270" height="125" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="560.0" y="144" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">open</text>
+<text x="560.0" y="176" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Ссылка опубликована</text>
+<text x="560.0" y="201" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Условия зафиксированы</text>
+<rect x="810" y="110" width="270" height="125" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="945.0" y="144" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">observed</text>
+<text x="945.0" y="176" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Точный платёж confirmed</text>
+<text x="945.0" y="201" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Ожидается finalized</text>
+<rect x="425" y="365" width="270" height="125" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="560.0" y="399" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">closed</text>
+<text x="560.0" y="431" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Оплата больше не ожидается</text>
+<text x="560.0" y="456" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Наблюдение сохраняется</text>
+<rect x="810" y="365" width="270" height="125" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="945.0" y="399" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">paid</text>
+<text x="945.0" y="431" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Платёж finalized</text>
+<text x="945.0" y="456" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Квитанция сохранена</text>
+<text x="40" y="586" font-family="Arial,sans-serif" font-size="19" fill="#444">Ошибочный кандидат не закрывает счёт и не блокирует корректную оплату.</text>
+<text x="40" y="612" font-family="Arial,sans-serif" font-size="19" fill="#444">Поздняя или лишняя оплата создаёт отдельную запись review_required.</text>
+</svg>

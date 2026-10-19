@@ -2,6 +2,7 @@
 
 Начните с [правил](AGENTS.md).
 
+- Платежи (задание 14): [scope](scopes/payments.md), [payments-client](../../clients/payments-client/README.md). Локальный MVP с HTTP API, JSON store и RPC worker. [Спецификация задания 13](../stablecoin-payments.md) описывает целевое развитие, включая PostgreSQL.
 - Зависимости и сборка: [Cargo.toml](../../Cargo.toml), [Cargo.lock](../../Cargo.lock), manifests затронутого клиента.
 - Dashboard: [scope](scopes/dashboard.md), [dashboard-client](../../clients/dashboard-client/) и его web/.
 - CPI: [scope](scopes/composable.md), [composable-client](../../clients/composable-client/) и инструкция compose_transfer существующей токен-программы.

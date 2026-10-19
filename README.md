@@ -13,6 +13,8 @@
 
 ## Содержание
 
+- [Задание 14 Capstone Build Week](#задание-14-capstone-build-week)
+- [Задание 13 RWA, stablecoins и платежи](#задание-13-rwa-stablecoins-и-платежи)
 - [Задание 11 CPI и composable applications](#задание-11-cpi-и-composable-applications)
 - [Задание 10 RPC dashboard](#задание-10-rpc-dashboard)
 - [Задание 9 DeFi на Solana](#задание-9-defi-на-solana)
@@ -24,6 +26,25 @@
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
+
+## Задание 14 Capstone Build Week
+
+Ветка `task/14-capstone-payments` реализует локальный MVP **SNOWNUMB Pay** из задания 13: кабинет продавца, счета в devnet USDC, публичную страницу с Solana Pay QR и сверку finalized-транзакций через RPC. Средства поступают продавцу напрямую; сервер не подписывает переводы. [Инструкция клиента](clients/payments-client/README.md) описывает запуск, HTTP API, защиту и ограничения. Состояние хранится локально в JSON; PostgreSQL и несколько продавцов остаются целевым развитием.
+
+В терминале macOS zsh/bash из корня репозитория:
+
+```bash
+# Запустить кабинет и RPC worker на 127.0.0.1:8790
+cargo run -p payments-client --locked
+```
+
+Проверены 16 автоматических тестов, 16 HTTP-сценариев и сохранение двух счетов после перезапуска процесса. Настоящий devnet RPC подтвердил сеть и mint; поиск по reference неоплаченного счёта вернул ноль переводов. Подтверждение оплаты и квитанция проверены на контролируемых RPC-ответах в тестах; фактический USDC-перевод не выполнялся. Word-отчёт со снимками интерфейса остаётся локально вне Git.
+
+## Задание 13 RWA, stablecoins и платежи
+
+Ветка `task/13-stablecoin-payments` содержит проект **SNOWNUMB Pay**: сервис выставления счетов в USDC на Solana с прямой оплатой продавцу и независимой сверкой через RPC. [Спецификация продукта](docs/stablecoin-payments.md) определяет архитектуру, платёжный контракт, состояния счёта, модель данных, API и критерии приёмки. Схемы находятся в `docs/assets/payments/`.
+
+Результат задания — проектирование. Платёжный сервис, миграции и переводы не запускались; существующие Rust-клиенты сохранены. Word-отчёт остаётся локально вне Git.
 
 ## Задание 11 CPI и composable applications
 
@@ -278,6 +299,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 
 | Часть проекта | Технологии |
 | :-- | :-- |
+| Платежи | Rust, tiny_http 0.12.0, qrcode 0.14.1, Solana RPC, HTML/CSS/JavaScript |
 | Программы | Rust 1.89.0, Anchor 1.1.2, Solana CLI 3.1.10 |
 | Dashboard | Rust, tiny_http 0.12.0, Solana RPC 3.1.14, HTML/CSS/JavaScript |
 | DeFi-клиент | Rust, Orca Whirlpools SDK/client 8.0.0, Tokio 1.53.1 |
@@ -289,6 +311,7 @@ cargo clippy -p token-client --all-targets --locked -- -D warnings
 
 | Каталог | Ответственность |
 | :-- | :-- |
+| `clients/payments-client/` | Локальные счета в devnet USDC, Solana Pay QR и независимая RPC-сверка |
 | `clients/dashboard-client/` | HTTP API публичных данных и веб-dashboard Solana |
 | `clients/composable-client/` | Localnet RPC-демонстрация атомарных CPI через Associated Token, System и Token Program |
 | `clients/defi-client/` | Пул SNTOK/wSOL, позиция ликвидности, quote и swap через Orca |
