@@ -9,6 +9,7 @@ DeFi-vault на Anchor 1.1.2 и Rust. Пользователи вносят SNTO
 | 8 | каркас vault | [раздел](#неделя-8) |
 | 9 | депозит и share-токены | [раздел](#неделя-9) |
 | 10 | CPI и вывод | [раздел](#неделя-10) |
+| 11 | AMM и концентрированная ликвидность | [раздел](#неделя-11) |
 
 ## Структура и запуск
 
@@ -192,3 +193,58 @@ liquidity_vault · Withdraw                    invoke [1]
 - **Что такое CPI и зачем он нужен?** Вызов другой программы из своей. Vault не пишет перевод токенов сам, а пользуется Token Program; так же дальше он вызывает Raydium.
 - **Когда подписывает пользователь, а когда программа?** Пользователь — когда двигаются его токены. Программа от имени PDA — когда двигаются токены vault или выпускаются share.
 - **Почему администратор не может забрать токены из vault своей подписью?** Authority хранилища — PDA, а не админ. В программе нет инструкции, которая переводит токены админу.
+
+---
+
+## Неделя 11
+
+**Amm и концентрированная ликвидность**
+
+**AMM** — биржа без книги заявок: в пуле лежат два токена, цену задаёт формула. В простом пуле `x × y = k`, и ликвидность размазана по всем ценам от нуля до бесконечности. В **CLMM** провайдер выбирает диапазон: пока цена внутри, его ликвидность участвует в обменах и получает комиссии; вышла за диапазон — перестаёт. Цены разбиты на **тики**, позиция в Raydium оформляется как NFT.
+
+Создаёт второй токен, CLMM-пул Raydium и позицию с кошелька. Вместо TypeScript-скриптов `raydium-sdk-V2-demo` инструкции `create_pool` и `open_position_with_token22_nft` собираются в Rust-клиенте ([`raydium.rs`](clients/vault-client/src/raydium.rs)): порядок аккаунтов, seeds PDA и discriminator'ы взяты из исходников [raydium-clmm](https://github.com/raydium-io/raydium-clmm). Так клиент остаётся в Cargo workspace и не зависит от крейта Raydium, который закреплён на другой версии Anchor.
+
+```bash
+# Второй токен: 1 000 000 на кошелёк
+cargo run -p vault-client --locked -- create-token
+# Пул SNTOK / второй токен: 1 SNTOK = 2 второго токена, комиссия 0.25%
+cargo run -p vault-client --locked -- create-pool --price 2
+# Позиция ±10% вокруг цены: 10 000 второго токена, SNTOK по пропорции
+cargo run -p vault-client --locked -- open-position --range 10 --amount 10000
+# Цена, тик, ликвидность и позиция
+cargo run -p vault-client --locked -- pool --position KNEY8omEeoCD2Kmx8qy7DZ3WUw46nXg8YtjhNiezLFa
+```
+
+### Адреса в devnet
+
+| Что | Адрес |
+| :-- | :-- |
+| Токен vault — SNTOK (Token-2022) | [DhjR…otozW](https://explorer.solana.com/address/DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW?cluster=devnet) |
+| Второй токен (SPL Token, 6 decimals) | [YkBa…soFm](https://explorer.solana.com/address/YkBaLgL7tK1ffq3vrb5qXqeJZ1rk6LpHSqZvgDXsoFm?cluster=devnet) |
+| Программа Raydium CLMM (devnet) | [DRay…9pfH](https://explorer.solana.com/address/DRayAUgENGQBKVaX8owNhgzkEDyoHTGVEGHVJT1E9pfH?cluster=devnet) |
+| AMM config: комиссия 0.25%, шаг тиков 60 | [CD4a…Q1qu](https://explorer.solana.com/address/CD4aJtX11cqTCAc83nxSPkkh5JW2yjD6uwHeovjqQ1qu?cluster=devnet) |
+| **Пул SNTOK / второй токен** | [HQoP…XrXYo](https://explorer.solana.com/address/HQoPzSGhYFrrbAcKXd1FcoWDNvAMtanhZ6ArAVXzrXYo?cluster=devnet) |
+| **NFT позиции** | [KNEY…zLFa](https://explorer.solana.com/address/KNEY8omEeoCD2Kmx8qy7DZ3WUw46nXg8YtjhNiezLFa?cluster=devnet) |
+| Создание второго токена | [транзакция](https://explorer.solana.com/tx/x5Degu45udo9vkgB7zhSviUBUejf1HMBPTfbSj5HAwUY7aPw1rNy7ciJP7P1TZ4PqoFsDmVAAyQJfy5uuVb9RbP?cluster=devnet) |
+| Создание пула | [транзакция](https://explorer.solana.com/tx/5EnN3mNMndUAuRTbqc3VdFy6exWkJrrtihvHkCaDTewDZ2AcXvHxmR7p81V7wYjehe8oLhyRPrHbH6uvCoK1kHNE?cluster=devnet) |
+| Открытие позиции | [транзакция](https://explorer.solana.com/tx/aSciKCdHb3f7q34V2jidLkiv7nHSdoQQrMRs88vyxtpYpXR2NPsrhSRJWDyxdJfABW85WRvCMBx9bLrrBJFWuCo?cluster=devnet) |
+
+Остальные аккаунты пула (хранилища, observation, bitmap, tick-массивы) — PDA программы Raydium; клиент вычисляет их из адреса пула.
+
+### Цена и диапазон
+
+Raydium упорядочивает mint'ы по байтам адреса: в пуле **token0 — второй токен, token1 — SNTOK**, и цена пула хранится как «SNTOK за 1 второй токен».
+
+| | |
+| :-- | :-- |
+| Текущая цена | **2 второго токена за 1 SNTOK** (0.5 SNTOK за второй токен, тик −6932) |
+| Диапазон позиции | **1.8112 … 2.2344** второго токена за SNTOK (тики −8040 … −5940) |
+| В позиции | 10 000 второго токена + 5 570.530016 SNTOK |
+
+**Почему ±10%.** Правило методички: отступить от цены на величину обычного колебания. Узкий диапазон ±1–2% дал бы больше комиссий с той же суммы, но цена быстро выходила бы за границы. Широкий ±50% спокойнее, но по доходу почти не отличается от простого пула. ±10% держит ликвидность рядом с ценой, и обмены недель 12–13 не выбивают из неё позицию. Границы немного несимметричны (−9.4% / +11.7%), потому что округляются к шагу тиков 60 и считаются в обратной цене пула.
+
+### Проверьте себя
+
+- **Чем концентрированная ликвидность отличается от простого пула?** В простом пуле деньги распределены по всем ценам и почти все лежат без дела. В CLMM они работают только в выбранном диапазоне, поэтому с той же суммы получается больше комиссий.
+- **Что происходит с позицией, когда цена выходит за диапазон?** Она перестаёт участвовать в обменах и зарабатывать и целиком превращается в один токен: выше верхней границы — в дорожающий токен уже продан, ниже нижней — позиция скупила дешевеющий.
+- **Почему узкий диапазон зарабатывает больше, но требует больше внимания?** Та же ликвидность сосредоточена на меньшем числе тиков, и доля комиссий с каждого обмена больше. Но цена чаще выходит за границы, и позицию приходится переставлять.

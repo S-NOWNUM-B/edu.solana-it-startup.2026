@@ -1,23 +1,45 @@
+mod pool;
+mod raydium;
 mod rpc;
 mod vault;
 
 use anchor_lang::prelude::Pubkey;
 use std::{path::PathBuf, process::ExitCode};
 
+use pool::Pair;
 use rpc::{fail, Client, Result, DEVNET_URL};
 use vault::Addresses;
 
 /// SNTOK из задания 7 — токен, который принимает vault.
 const SNTOK_MINT: &str = "DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW";
+/// Второй токен пула Raydium в devnet; для localnet передайте --quote-mint.
+const QUOTE_MINT: Option<&str> = Some("YkBaLgL7tK1ffq3vrb5qXqeJZ1rk6LpHSqZvgDXsoFm");
 const USAGE: &str = "Liquidity Vault client\n\
 Usage: vault-client <command> [--url <RPC_URL>] [--keypair <PATH>] [--mint <PUBKEY>] [--amount <TOKENS>]\n\
+       [--quote-mint <PUBKEY>] [--price <QUOTE_PER_SNTOK>] [--range <PERCENT>] [--position <NFT_MINT>]\n\
 Commands:\n\
   init     create VaultState, vault token account and share mint (admin)\n\
   card     create the user card of the wallet\n\
   deposit  --amount <TOKENS>: deposit tokens and receive share tokens\n\
   withdraw --amount <SHARES>: burn share tokens and receive tokens back\n\
   show     read vault and user card through RPC\n\
+  create-token   create the second pool token and mint it to the wallet\n\
+  create-pool    --price <P>: create Raydium CLMM pool SNTOK/second token\n\
+  open-position  --range <PCT> --amount <SECOND_TOKEN>: wallet position around the price\n\
+  pool           [--position <NFT_MINT>]: read pool price, liquidity and a position\n\
 Defaults: Solana devnet, ../.keys/devnet-payer.json, SNTOK mint";
+
+const COMMANDS: &[&str] = &[
+    "init",
+    "card",
+    "deposit",
+    "withdraw",
+    "show",
+    "create-token",
+    "create-pool",
+    "open-position",
+    "pool",
+];
 
 struct Options {
     command: String,
@@ -25,6 +47,10 @@ struct Options {
     keypair: PathBuf,
     mint: Pubkey,
     amount: Option<String>,
+    quote_mint: Option<Pubkey>,
+    price: Option<String>,
+    range: Option<String>,
+    position: Option<Pubkey>,
 }
 
 fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Options>> {
@@ -38,6 +64,10 @@ fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Option
         keypair: "../.keys/devnet-payer.json".into(),
         mint: SNTOK_MINT.parse()?,
         amount: None,
+        quote_mint: QUOTE_MINT.map(str::parse).transpose()?,
+        price: None,
+        range: None,
+        position: None,
     };
     while let Some(option) = args.next() {
         let Some(value) = args.next() else {
@@ -48,6 +78,10 @@ fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Option
             "--keypair" => options.keypair = value.into(),
             "--mint" => options.mint = value.parse()?,
             "--amount" => options.amount = Some(value),
+            "--quote-mint" => options.quote_mint = Some(value.parse()?),
+            "--price" => options.price = Some(value),
+            "--range" => options.range = Some(value),
+            "--position" => options.position = Some(value.parse()?),
             _ => return fail(format!("Unknown option: {option}")),
         }
     }
@@ -59,25 +93,39 @@ fn run() -> Result<()> {
         println!("{USAGE}");
         return Ok(());
     };
-    if !matches!(
-        options.command.as_str(),
-        "init" | "card" | "deposit" | "withdraw" | "show"
-    ) {
+    if !COMMANDS.contains(&options.command.as_str()) {
         return fail(format!("Unknown command: {}\n{USAGE}", options.command));
     }
-    let amount = || {
-        options
-            .amount
-            .as_deref()
-            .ok_or_else(|| format!("{} requires --amount", options.command))
+    let required = |value: &Option<String>, name: &str| {
+        value
+            .clone()
+            .ok_or_else(|| format!("{} requires --{name}", options.command))
+    };
+    let amount = || required(&options.amount, "amount");
+    let pair = || -> Result<Pair> {
+        Ok(Pair {
+            base: options.mint,
+            quote: options
+                .quote_mint
+                .ok_or("Pass --quote-mint with the second pool token")?,
+        })
     };
     let client = Client::connect(&options.url, &options.keypair)?;
     let addresses = Addresses::load(&client, options.mint)?;
     match options.command.as_str() {
         "init" => vault::init(&client, &addresses),
         "card" => vault::create_card(&client, &addresses),
-        "deposit" => vault::deposit(&client, &addresses, amount()?),
-        "withdraw" => vault::withdraw(&client, &addresses, amount()?),
+        "deposit" => vault::deposit(&client, &addresses, &amount()?),
+        "withdraw" => vault::withdraw(&client, &addresses, &amount()?),
+        "create-token" => pool::create_token(&client),
+        "create-pool" => pool::create_pool(&client, &pair()?, &required(&options.price, "price")?),
+        "open-position" => pool::open_position(
+            &client,
+            &pair()?,
+            &required(&options.range, "range")?,
+            &amount()?,
+        ),
+        "pool" => pool::show(&client, &pair()?, options.position),
         _ => vault::show(&client, &addresses),
     }
 }
