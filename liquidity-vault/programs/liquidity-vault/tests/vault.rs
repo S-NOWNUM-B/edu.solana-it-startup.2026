@@ -218,6 +218,29 @@ impl Fixture {
         self.deposit_from(user, source, amount)
     }
 
+    fn withdraw_to(&mut self, user: &Keypair, destination: Pubkey, shares: u64) -> bool {
+        let ix = vault_ix(
+            liquidity_vault::accounts::Withdraw {
+                user: user.pubkey(),
+                vault: self.vault,
+                user_card: self.card_address(&user.pubkey()),
+                token_mint: self.mint,
+                vault_token_account: self.vault_token_account,
+                share_mint: self.share_mint,
+                user_token_account: destination,
+                user_share_account: self.ata(&user.pubkey(), &self.share_mint),
+                token_program: self.token_program,
+            },
+            liquidity_vault::instruction::Withdraw { shares },
+        );
+        send(&mut self.svm, user, &[], &[ix])
+    }
+
+    fn withdraw(&mut self, user: &Keypair, shares: u64) -> bool {
+        let destination = self.ata(&user.pubkey(), &self.mint);
+        self.withdraw_to(user, destination, shares)
+    }
+
     /// Доход vault: токены поступают в хранилище без выпуска share-токенов.
     fn earn(&mut self, amount: u64) {
         let mint_to = spl_token_2022::instruction::mint_to(
@@ -397,4 +420,69 @@ fn deposit_rejects_zero_dust_foreign_accounts_and_missing_card() {
     fixture.fund(&no_card.pubkey(), 100);
     assert!(!fixture.deposit(&no_card, 100), "card is required");
     assert_eq!(fixture.balance(&victim_tokens), 500);
+}
+
+#[test]
+fn withdraw_burns_shares_and_returns_tokens_signed_by_vault() {
+    for token_program in [spl_token::ID, spl_token_2022::ID] {
+        let mut fixture = Fixture::new(token_program);
+        let user = fixture.depositor(1_000);
+        assert!(fixture.deposit(&user, 1_000));
+        assert!(fixture.withdraw(&user, 400));
+        assert_eq!(fixture.shares(&user.pubkey()), 600);
+        assert_eq!(
+            fixture.balance(&fixture.ata(&user.pubkey(), &fixture.mint)),
+            400
+        );
+        assert_eq!(fixture.balance(&fixture.vault_token_account), 600);
+        let share: Mint = read(&fixture.svm, &fixture.share_mint);
+        assert_eq!(share.supply, 600);
+        let card: UserCard = read(&fixture.svm, &fixture.card_address(&user.pubkey()));
+        let vault: VaultState = read(&fixture.svm, &fixture.vault);
+        assert_eq!(card.deposited, 600);
+        assert_eq!(vault.total_deposited, 600);
+    }
+}
+
+#[test]
+fn withdraw_shares_vault_income_proportionally() {
+    let mut fixture = Fixture::new(spl_token_2022::ID);
+    let early = fixture.depositor(1_000);
+    let late = fixture.depositor(110);
+    assert!(fixture.deposit(&early, 1_000));
+    fixture.earn(100);
+    assert!(fixture.deposit(&late, 110));
+    assert!(fixture.withdraw(&late, 100));
+    assert_eq!(
+        fixture.balance(&fixture.ata(&late.pubkey(), &fixture.mint)),
+        110
+    );
+    assert!(fixture.withdraw(&early, 1_000));
+    assert_eq!(
+        fixture.balance(&fixture.ata(&early.pubkey(), &fixture.mint)),
+        1_100
+    );
+    assert_eq!(fixture.balance(&fixture.vault_token_account), 0);
+}
+
+#[test]
+fn withdraw_rejects_zero_excess_and_foreign_destination() {
+    let mut fixture = Fixture::new(spl_token::ID);
+    let user = fixture.depositor(1_000);
+    let other = fixture.depositor(1_000);
+    assert!(fixture.deposit(&user, 500));
+    assert!(fixture.deposit(&other, 500));
+    assert!(!fixture.withdraw(&user, 0), "zero shares");
+    assert!(!fixture.withdraw(&user, 501), "more than own shares");
+    let other_tokens = fixture.ata(&other.pubkey(), &fixture.mint);
+    assert!(
+        !fixture.withdraw_to(&user, other_tokens, 100),
+        "foreign destination"
+    );
+    let admin = fixture.admin.insecure_clone();
+    assert!(
+        !fixture.withdraw(&admin, 1),
+        "admin has no card and no shares"
+    );
+    assert_eq!(fixture.balance(&fixture.vault_token_account), 1_000);
 }

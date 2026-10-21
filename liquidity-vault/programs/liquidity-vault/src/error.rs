@@ -8,4 +8,6 @@ pub enum VaultError {
     ZeroShares,
     #[msg("Math overflow")]
     MathOverflow,
+    #[msg("Not enough share tokens")]
+    InsufficientShares,
 }

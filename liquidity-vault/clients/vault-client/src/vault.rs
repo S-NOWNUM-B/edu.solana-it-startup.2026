@@ -176,6 +176,55 @@ pub fn deposit(client: &Client, addresses: &Addresses, amount: &str) -> Result<(
     show(client, addresses)
 }
 
+pub fn withdraw(client: &Client, addresses: &Addresses, shares: &str) -> Result<()> {
+    let shares = parse_amount(shares, addresses.decimals)?;
+    let user = client.payer.pubkey();
+    let user_tokens = addresses.ata(&user, &addresses.token_mint);
+    let user_shares = addresses.ata(&user, &addresses.share_mint);
+    let supply: u64 = client
+        .rpc
+        .get_token_supply(&addresses.share_mint)?
+        .amount
+        .parse()?;
+    let vault_before = client.token_balance(&addresses.vault_token_account)?;
+    let tokens_before = client.token_balance(&user_tokens)?;
+    let expected = liquidity_vault::math::tokens_for_shares(shares, supply, vault_before)?;
+    println!(
+        "Withdraw {} shares: vault holds {}, share supply {}, expected tokens {}",
+        addresses.format(shares),
+        addresses.format(vault_before),
+        addresses.format(supply),
+        addresses.format(expected)
+    );
+    let instruction = vault_instruction(
+        liquidity_vault::accounts::Withdraw {
+            user,
+            vault: addresses.vault,
+            user_card: user_card_address(&addresses.vault, &user),
+            token_mint: addresses.token_mint,
+            vault_token_account: addresses.vault_token_account,
+            share_mint: addresses.share_mint,
+            user_token_account: user_tokens,
+            user_share_account: user_shares,
+            token_program: addresses.token_program,
+        },
+        liquidity_vault::instruction::Withdraw { shares },
+    );
+    client.send("withdraw", &[instruction], &[])?;
+    let received = client.token_balance(&user_tokens)? - tokens_before;
+    let vault_after = client.token_balance(&addresses.vault_token_account)?;
+    if received != expected || vault_after != vault_before - expected {
+        return fail("RPC readback does not match the withdrawal");
+    }
+    println!(
+        "PASS RPC readback: burned {} shares, +{} tokens, vault holds {}",
+        addresses.format(shares),
+        addresses.format(received),
+        addresses.format(vault_after)
+    );
+    show(client, addresses)
+}
+
 /// Читает состояние vault и карточки текущего кошелька через RPC.
 pub fn show(client: &Client, addresses: &Addresses) -> Result<()> {
     let Some(vault) = client.account::<VaultState>(&addresses.vault)? else {

@@ -15,6 +15,7 @@ Commands:\n\
   init     create VaultState, vault token account and share mint (admin)\n\
   card     create the user card of the wallet\n\
   deposit  --amount <TOKENS>: deposit tokens and receive share tokens\n\
+  withdraw --amount <SHARES>: burn share tokens and receive tokens back\n\
   show     read vault and user card through RPC\n\
 Defaults: Solana devnet, ../.keys/devnet-payer.json, SNTOK mint";
 
@@ -60,7 +61,7 @@ fn run() -> Result<()> {
     };
     if !matches!(
         options.command.as_str(),
-        "init" | "card" | "deposit" | "show"
+        "init" | "card" | "deposit" | "withdraw" | "show"
     ) {
         return fail(format!("Unknown command: {}\n{USAGE}", options.command));
     }
@@ -76,6 +77,7 @@ fn run() -> Result<()> {
         "init" => vault::init(&client, &addresses),
         "card" => vault::create_card(&client, &addresses),
         "deposit" => vault::deposit(&client, &addresses, amount()?),
+        "withdraw" => vault::withdraw(&client, &addresses, amount()?),
         _ => vault::show(&client, &addresses),
     }
 }

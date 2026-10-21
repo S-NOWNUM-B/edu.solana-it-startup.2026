@@ -20,6 +20,11 @@ pub fn shares_for_deposit(amount: u64, total_shares: u64, vault_balance: u64) ->
     mul_div(amount, total_shares, vault_balance)
 }
 
+/// Токены за возвращённые shares: доля ÷ все shares × токены vault.
+pub fn tokens_for_shares(shares: u64, total_shares: u64, vault_balance: u64) -> Result<u64> {
+    mul_div(shares, vault_balance, total_shares)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,6 +38,13 @@ mod tests {
     fn late_depositor_does_not_take_earned_income() {
         // Пример методички: 1100 токенов на 1000 shares, вклад 110 даёт 100 shares
         assert_eq!(shares_for_deposit(110, 1_000, 1_100).unwrap(), 100);
+    }
+
+    #[test]
+    fn withdraw_returns_share_of_vault_including_income() {
+        assert_eq!(tokens_for_shares(400, 1_000, 1_000).unwrap(), 400);
+        assert_eq!(tokens_for_shares(100, 1_100, 1_210).unwrap(), 110);
+        assert!(tokens_for_shares(1, 0, 0).is_err());
     }
 
     #[test]
