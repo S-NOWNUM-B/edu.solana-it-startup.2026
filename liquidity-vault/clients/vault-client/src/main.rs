@@ -10,11 +10,12 @@ use vault::Addresses;
 /// SNTOK из задания 7 — токен, который принимает vault.
 const SNTOK_MINT: &str = "DhjRbgdts2DNEvbfEVQkuGkpwwioEWW87LdHV11otozW";
 const USAGE: &str = "Liquidity Vault client\n\
-Usage: vault-client <command> [--url <RPC_URL>] [--keypair <PATH>] [--mint <PUBKEY>]\n\
+Usage: vault-client <command> [--url <RPC_URL>] [--keypair <PATH>] [--mint <PUBKEY>] [--amount <TOKENS>]\n\
 Commands:\n\
-  init   create VaultState, vault token account and share mint (admin)\n\
-  card   create the user card of the wallet\n\
-  show   read vault and user card through RPC\n\
+  init     create VaultState, vault token account and share mint (admin)\n\
+  card     create the user card of the wallet\n\
+  deposit  --amount <TOKENS>: deposit tokens and receive share tokens\n\
+  show     read vault and user card through RPC\n\
 Defaults: Solana devnet, ../.keys/devnet-payer.json, SNTOK mint";
 
 struct Options {
@@ -22,6 +23,7 @@ struct Options {
     url: String,
     keypair: PathBuf,
     mint: Pubkey,
+    amount: Option<String>,
 }
 
 fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Options>> {
@@ -34,6 +36,7 @@ fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Option
         url: DEVNET_URL.into(),
         keypair: "../.keys/devnet-payer.json".into(),
         mint: SNTOK_MINT.parse()?,
+        amount: None,
     };
     while let Some(option) = args.next() {
         let Some(value) = args.next() else {
@@ -43,6 +46,7 @@ fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Option
             "--url" => options.url = value,
             "--keypair" => options.keypair = value.into(),
             "--mint" => options.mint = value.parse()?,
+            "--amount" => options.amount = Some(value),
             _ => return fail(format!("Unknown option: {option}")),
         }
     }
@@ -54,14 +58,24 @@ fn run() -> Result<()> {
         println!("{USAGE}");
         return Ok(());
     };
-    if !matches!(options.command.as_str(), "init" | "card" | "show") {
+    if !matches!(
+        options.command.as_str(),
+        "init" | "card" | "deposit" | "show"
+    ) {
         return fail(format!("Unknown command: {}\n{USAGE}", options.command));
     }
+    let amount = || {
+        options
+            .amount
+            .as_deref()
+            .ok_or_else(|| format!("{} requires --amount", options.command))
+    };
     let client = Client::connect(&options.url, &options.keypair)?;
     let addresses = Addresses::load(&client, options.mint)?;
     match options.command.as_str() {
         "init" => vault::init(&client, &addresses),
         "card" => vault::create_card(&client, &addresses),
+        "deposit" => vault::deposit(&client, &addresses, amount()?),
         _ => vault::show(&client, &addresses),
     }
 }

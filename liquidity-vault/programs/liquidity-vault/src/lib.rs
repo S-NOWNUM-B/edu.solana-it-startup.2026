@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 pub mod error;
 pub mod instructions;
+pub mod math;
 pub mod state;
 
 pub use instructions::*;
@@ -20,5 +21,10 @@ pub mod liquidity_vault {
     /// Пользователь создаёт свою карточку; адрес выводится из vault и пользователя.
     pub fn create_user_card(ctx: Context<CreateUserCard>) -> Result<()> {
         instructions::create_user_card::handler(ctx)
+    }
+
+    /// Пользователь вносит токены и получает share-токены по текущему курсу.
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit::handler(ctx, amount)
     }
 }

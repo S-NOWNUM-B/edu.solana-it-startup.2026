@@ -1,5 +1,8 @@
 use anchor_lang::{prelude::Pubkey, AccountDeserialize, InstructionData, ToAccountMetas};
 use anchor_spl::{
+    associated_token::{
+        get_associated_token_address_with_program_id, spl_associated_token_account,
+    },
     token::spl_token,
     token_2022::spl_token_2022,
     token_interface::{Mint, TokenAccount},
@@ -150,6 +153,93 @@ impl Fixture {
         );
         send(&mut self.svm, user, &[], &[ix])
     }
+
+    fn ata(&self, owner: &Pubkey, mint: &Pubkey) -> Pubkey {
+        get_associated_token_address_with_program_id(owner, mint, &self.token_program)
+    }
+
+    /// Создаёт ATA владельца и начисляет ему токены vault от имени mint authority.
+    fn fund(&mut self, owner: &Pubkey, amount: u64) -> Pubkey {
+        let account = self.ata(owner, &self.mint);
+        let create =
+            spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                &self.admin.pubkey(),
+                owner,
+                &self.mint,
+                &self.token_program,
+            );
+        let mint_to = spl_token_2022::instruction::mint_to(
+            &self.token_program,
+            &self.mint,
+            &account,
+            &self.admin.pubkey(),
+            &[],
+            amount,
+        )
+        .unwrap();
+        let admin = self.admin.insecure_clone();
+        assert!(send(&mut self.svm, &admin, &[], &[create, mint_to]));
+        account
+    }
+
+    fn balance(&self, account: &Pubkey) -> u64 {
+        match self.svm.get_account(account) {
+            Some(_) => read::<TokenAccount>(&self.svm, account).amount,
+            None => 0,
+        }
+    }
+
+    fn shares(&self, owner: &Pubkey) -> u64 {
+        self.balance(&self.ata(owner, &self.share_mint))
+    }
+
+    fn deposit_from(&mut self, user: &Keypair, source: Pubkey, amount: u64) -> bool {
+        let ix = vault_ix(
+            liquidity_vault::accounts::Deposit {
+                user: user.pubkey(),
+                vault: self.vault,
+                user_card: self.card_address(&user.pubkey()),
+                token_mint: self.mint,
+                vault_token_account: self.vault_token_account,
+                share_mint: self.share_mint,
+                user_token_account: source,
+                user_share_account: self.ata(&user.pubkey(), &self.share_mint),
+                token_program: self.token_program,
+                associated_token_program: anchor_spl::associated_token::ID,
+                system_program: anchor_lang::system_program::ID,
+            },
+            liquidity_vault::instruction::Deposit { amount },
+        );
+        send(&mut self.svm, user, &[], &[ix])
+    }
+
+    fn deposit(&mut self, user: &Keypair, amount: u64) -> bool {
+        let source = self.ata(&user.pubkey(), &self.mint);
+        self.deposit_from(user, source, amount)
+    }
+
+    /// Доход vault: токены поступают в хранилище без выпуска share-токенов.
+    fn earn(&mut self, amount: u64) {
+        let mint_to = spl_token_2022::instruction::mint_to(
+            &self.token_program,
+            &self.mint,
+            &self.vault_token_account,
+            &self.admin.pubkey(),
+            &[],
+            amount,
+        )
+        .unwrap();
+        let admin = self.admin.insecure_clone();
+        assert!(send(&mut self.svm, &admin, &[], &[mint_to]));
+    }
+
+    /// Пользователь с карточкой и токенами на кошельке.
+    fn depositor(&mut self, tokens: u64) -> Keypair {
+        let user = self.user();
+        assert!(self.create_card(&user));
+        self.fund(&user.pubkey(), tokens);
+        user
+    }
 }
 
 /// Создание аккаунта mint через System Program с рентой из LiteSVM.
@@ -251,4 +341,60 @@ fn card_requires_existing_vault() {
         liquidity_vault::instruction::CreateUserCard {},
     );
     assert!(!send(&mut fixture.svm, &user, &[], &[ix]));
+}
+
+#[test]
+fn first_deposit_moves_tokens_and_mints_shares_one_to_one() {
+    for token_program in [spl_token::ID, spl_token_2022::ID] {
+        let mut fixture = Fixture::new(token_program);
+        let user = fixture.depositor(5_000);
+        assert!(fixture.deposit(&user, 1_000));
+        assert_eq!(
+            fixture.balance(&fixture.ata(&user.pubkey(), &fixture.mint)),
+            4_000
+        );
+        assert_eq!(fixture.balance(&fixture.vault_token_account), 1_000);
+        assert_eq!(fixture.shares(&user.pubkey()), 1_000);
+        let vault: VaultState = read(&fixture.svm, &fixture.vault);
+        let card: UserCard = read(&fixture.svm, &fixture.card_address(&user.pubkey()));
+        assert_eq!(vault.total_deposited, 1_000);
+        assert_eq!(card.deposited, 1_000);
+    }
+}
+
+#[test]
+fn late_depositor_gets_fewer_shares_after_vault_income() {
+    let mut fixture = Fixture::new(spl_token_2022::ID);
+    let early = fixture.depositor(1_000);
+    let late = fixture.depositor(110);
+    assert!(fixture.deposit(&early, 1_000));
+    fixture.earn(100);
+    assert!(fixture.deposit(&late, 110));
+    assert_eq!(fixture.shares(&late.pubkey()), 100);
+    assert_eq!(fixture.balance(&fixture.vault_token_account), 1_210);
+    let share: Mint = read(&fixture.svm, &fixture.share_mint);
+    assert_eq!(share.supply, 1_100);
+}
+
+#[test]
+fn deposit_rejects_zero_dust_foreign_accounts_and_missing_card() {
+    let mut fixture = Fixture::new(spl_token::ID);
+    let user = fixture.depositor(1_000);
+    assert!(!fixture.deposit(&user, 0), "zero amount");
+
+    assert!(fixture.deposit(&user, 10));
+    fixture.earn(1_000);
+    assert!(!fixture.deposit(&user, 1), "dust gives zero shares");
+
+    let victim = fixture.depositor(500);
+    let victim_tokens = fixture.ata(&victim.pubkey(), &fixture.mint);
+    assert!(
+        !fixture.deposit_from(&user, victim_tokens, 100),
+        "foreign source"
+    );
+
+    let no_card = fixture.user();
+    fixture.fund(&no_card.pubkey(), 100);
+    assert!(!fixture.deposit(&no_card, 100), "card is required");
+    assert_eq!(fixture.balance(&victim_tokens), 500);
 }
