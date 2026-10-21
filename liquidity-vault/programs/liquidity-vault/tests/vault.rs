@@ -7,10 +7,15 @@ use anchor_spl::{
     token_2022::spl_token_2022,
     token_interface::{Mint, TokenAccount},
 };
-use liquidity_vault::state::{
-    UserCard, VaultState, SHARE_MINT_SEED, USER_CARD_SEED, VAULT_SEED, VAULT_TOKENS_SEED,
+use liquidity_vault::{
+    raydium::{CLMM_PROGRAM_ID, MEMO_PROGRAM_ID},
+    state::{
+        Strategy, UserCard, VaultState, SECOND_TOKENS_SEED, SHARE_MINT_SEED, STRATEGY_SEED,
+        USER_CARD_SEED, VAULT_SEED, VAULT_TOKENS_SEED,
+    },
 };
 use litesvm::LiteSVM;
+use solana_account::Account;
 use solana_keypair::Keypair;
 use solana_message::{Instruction, Message};
 use solana_signer::Signer;
@@ -485,4 +490,194 @@ fn withdraw_rejects_zero_excess_and_foreign_destination() {
         "admin has no card and no shares"
     );
     assert_eq!(fixture.balance(&fixture.vault_token_account), 1_000);
+}
+
+const POOL_DISCRIMINATOR: [u8; 8] = [247, 237, 227, 245, 215, 195, 222, 70];
+
+/// Стратегия поверх vault: пул Raydium подменён аккаунтом с тем же layout.
+struct StrategyFixture {
+    base: Fixture,
+    second_mint: Pubkey,
+    pool: Pubkey,
+    strategy: Pubkey,
+    second_tokens: Pubkey,
+}
+
+impl StrategyFixture {
+    fn new() -> Self {
+        let mut base = Fixture::new(spl_token_2022::ID);
+        let second_mint = Keypair::new();
+        let create = solana_system_interface_create(
+            &base.admin.pubkey(),
+            &second_mint.pubkey(),
+            82,
+            &spl_token::ID,
+            &base.svm,
+        );
+        let init = spl_token::instruction::initialize_mint2(
+            &spl_token::ID,
+            &second_mint.pubkey(),
+            &base.admin.pubkey(),
+            None,
+            DECIMALS,
+        )
+        .unwrap();
+        let admin = base.admin.insecure_clone();
+        assert!(send(
+            &mut base.svm,
+            &admin,
+            &[&second_mint],
+            &[create, init]
+        ));
+        let pool = fake_pool(
+            &mut base.svm,
+            CLMM_PROGRAM_ID,
+            base.mint,
+            second_mint.pubkey(),
+        );
+        let vault = base.vault;
+        Self {
+            base,
+            second_mint: second_mint.pubkey(),
+            pool,
+            strategy: pda(&[STRATEGY_SEED, vault.as_ref()]),
+            second_tokens: pda(&[SECOND_TOKENS_SEED, vault.as_ref()]),
+        }
+    }
+
+    fn init(&mut self, signer: &Keypair, pool: Pubkey) -> bool {
+        let ix = vault_ix(
+            liquidity_vault::accounts::InitStrategy {
+                admin: signer.pubkey(),
+                vault: self.base.vault,
+                strategy: self.strategy,
+                pool,
+                second_mint: self.second_mint,
+                second_token_account: self.second_tokens,
+                second_token_program: spl_token::ID,
+                system_program: anchor_lang::system_program::ID,
+            },
+            liquidity_vault::instruction::InitStrategy {},
+        );
+        send(&mut self.base.svm, signer, &[], &[ix])
+    }
+
+    /// Swap отклоняется проверками vault ещё до CPI в Raydium.
+    fn swap(&mut self, signer: &Keypair, pool: Pubkey) -> bool {
+        let ix = vault_ix(
+            liquidity_vault::accounts::Swap {
+                admin: signer.pubkey(),
+                vault: self.base.vault,
+                strategy: self.strategy,
+                clmm_program: CLMM_PROGRAM_ID,
+                amm_config: Keypair::new().pubkey(),
+                pool,
+                vault_token_account: self.base.vault_token_account,
+                second_token_account: self.second_tokens,
+                input_pool_vault: Keypair::new().pubkey(),
+                output_pool_vault: Keypair::new().pubkey(),
+                observation: Keypair::new().pubkey(),
+                token_program: spl_token::ID,
+                token_program_2022: spl_token_2022::ID,
+                memo_program: MEMO_PROGRAM_ID,
+                input_mint: self.base.mint,
+                output_mint: self.second_mint,
+            },
+            liquidity_vault::instruction::Swap {
+                amount_in: 1,
+                minimum_amount_out: 0,
+                sell_vault_token: true,
+            },
+        );
+        send(&mut self.base.svm, signer, &[], &[ix])
+    }
+}
+
+fn fake_pool(svm: &mut LiteSVM, owner: Pubkey, mint_a: Pubkey, mint_b: Pubkey) -> Pubkey {
+    let (mint_0, mint_1) = if mint_a.to_bytes() < mint_b.to_bytes() {
+        (mint_a, mint_b)
+    } else {
+        (mint_b, mint_a)
+    };
+    let mut data = vec![0; 1544];
+    data[..8].copy_from_slice(&POOL_DISCRIMINATOR);
+    data[73..105].copy_from_slice(mint_0.as_ref());
+    data[105..137].copy_from_slice(mint_1.as_ref());
+    let address = Keypair::new().pubkey();
+    svm.set_account(
+        address,
+        Account {
+            lamports: svm.minimum_balance_for_rent_exemption(data.len()),
+            data,
+            owner,
+            executable: false,
+            rent_epoch: 0,
+        },
+    )
+    .unwrap();
+    address
+}
+
+#[test]
+fn strategy_binds_vault_to_one_raydium_pool_with_both_tokens() {
+    let mut fixture = StrategyFixture::new();
+    let stranger = fixture.base.user();
+    assert!(
+        !fixture.init(&stranger.insecure_clone(), fixture.pool),
+        "only admin"
+    );
+
+    let admin = fixture.base.admin.insecure_clone();
+    let fake_owner = fake_pool(
+        &mut fixture.base.svm,
+        Keypair::new().pubkey(),
+        fixture.base.mint,
+        fixture.second_mint,
+    );
+    assert!(
+        !fixture.init(&admin, fake_owner),
+        "pool must be owned by Raydium"
+    );
+    let other_mint = Keypair::new().pubkey();
+    let wrong_pair = fake_pool(
+        &mut fixture.base.svm,
+        CLMM_PROGRAM_ID,
+        fixture.base.mint,
+        other_mint,
+    );
+    assert!(
+        !fixture.init(&admin, wrong_pair),
+        "pool must contain both tokens"
+    );
+
+    assert!(fixture.init(&admin, fixture.pool));
+    let strategy: Strategy = read(&fixture.base.svm, &fixture.strategy);
+    assert_eq!(strategy.pool, fixture.pool);
+    assert_eq!(strategy.second_token_account, fixture.second_tokens);
+    assert_eq!(strategy.position_nft_mint, Pubkey::default());
+    let storage: TokenAccount = read(&fixture.base.svm, &fixture.second_tokens);
+    assert_eq!(
+        storage.owner, fixture.base.vault,
+        "second storage authority is the vault PDA"
+    );
+    assert!(
+        !fixture.init(&admin, fixture.pool),
+        "strategy is created once"
+    );
+}
+
+#[test]
+fn swap_is_allowed_only_for_admin_through_strategy_pool() {
+    let mut fixture = StrategyFixture::new();
+    let admin = fixture.base.admin.insecure_clone();
+    assert!(fixture.init(&admin, fixture.pool));
+    let stranger = fixture.base.user();
+    assert!(!fixture.swap(&stranger, fixture.pool), "not admin");
+    let other_pool = fake_pool(
+        &mut fixture.base.svm,
+        CLMM_PROGRAM_ID,
+        fixture.base.mint,
+        fixture.second_mint,
+    );
+    assert!(!fixture.swap(&admin, other_pool), "pool outside strategy");
 }

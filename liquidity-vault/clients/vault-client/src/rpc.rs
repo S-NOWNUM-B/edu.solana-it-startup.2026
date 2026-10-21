@@ -3,6 +3,9 @@ use solana_commitment_config::CommitmentConfig;
 use solana_keypair::{read_keypair_file, Keypair};
 use solana_message::Instruction;
 use solana_rpc_client::rpc_client::RpcClient;
+use solana_rpc_client_api::config::{
+    RpcSendTransactionConfig, RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig,
+};
 use solana_signer::Signer;
 use solana_transaction::Transaction;
 use std::{error::Error, io, path::Path, time::Duration};
@@ -70,6 +73,85 @@ impl Client {
         format!("https://explorer.solana.com/{kind}/{value}?cluster={cluster}")
     }
 
+    fn sign(
+        &self,
+        instructions: &[Instruction],
+        extra_signers: &[&Keypair],
+    ) -> Result<Transaction> {
+        let mut signers = vec![&self.payer];
+        signers.extend_from_slice(extra_signers);
+        Ok(Transaction::new_signed_with_payer(
+            instructions,
+            Some(&self.payer.pubkey()),
+            &signers,
+            self.rpc.get_latest_blockhash()?,
+        ))
+    }
+
+    /// Simulation с чтением аккаунтов после выполнения: так клиент получает ожидаемую сумму.
+    pub fn simulate_accounts(
+        &self,
+        instructions: &[Instruction],
+        addresses: &[Pubkey],
+    ) -> Result<Vec<Vec<u8>>> {
+        let tx = self.sign(instructions, &[])?;
+        let result = self
+            .rpc
+            .simulate_transaction_with_config(
+                &tx,
+                RpcSimulateTransactionConfig {
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    accounts: Some(RpcSimulateTransactionAccountsConfig {
+                        encoding: None,
+                        addresses: addresses.iter().map(ToString::to_string).collect(),
+                    }),
+                    ..Default::default()
+                },
+            )?
+            .value;
+        if let Some(error) = result.err {
+            for line in result.logs.unwrap_or_default() {
+                println!("  {line}");
+            }
+            return fail(format!("Quote simulation failed: {error:?}"));
+        }
+        result
+            .accounts
+            .unwrap_or_default()
+            .into_iter()
+            .map(|account| {
+                account
+                    .and_then(|account| account.data.decode())
+                    .ok_or_else(|| "Simulation did not return account data".into())
+            })
+            .collect()
+    }
+
+    /// Отправка без preflight: отклонённая транзакция попадает в сеть и видна в Explorer.
+    pub fn send_expecting_failure(
+        &self,
+        label: &str,
+        instructions: &[Instruction],
+    ) -> Result<String> {
+        let tx = self.sign(instructions, &[])?;
+        let signature = self.rpc.send_transaction_with_config(
+            &tx,
+            RpcSendTransactionConfig {
+                skip_preflight: true,
+                ..Default::default()
+            },
+        )?;
+        self.rpc
+            .poll_for_signature_with_commitment(&signature, CommitmentConfig::confirmed())?;
+        let status = self.rpc.get_signature_status(&signature)?;
+        println!("{label}: {}", self.explorer("tx", signature));
+        match status {
+            Some(Err(error)) => println!("  rejected on-chain: {error}"),
+            _ => return fail(format!("{label}: transaction unexpectedly succeeded")),
+        }
+        Ok(signature.to_string())
+    }
+
     /// Simulation, затем отправка и подтверждение; печатает логи и ссылку на Explorer.
     pub fn send(
         &self,
@@ -77,15 +159,7 @@ impl Client {
         instructions: &[Instruction],
         extra_signers: &[&Keypair],
     ) -> Result<String> {
-        let mut signers = vec![&self.payer];
-        signers.extend_from_slice(extra_signers);
-        let blockhash = self.rpc.get_latest_blockhash()?;
-        let tx = Transaction::new_signed_with_payer(
-            instructions,
-            Some(&self.payer.pubkey()),
-            &signers,
-            blockhash,
-        );
+        let tx = self.sign(instructions, extra_signers)?;
         let simulation = self.rpc.simulate_transaction(&tx)?.value;
         for line in simulation.logs.unwrap_or_default() {
             println!("  {line}");

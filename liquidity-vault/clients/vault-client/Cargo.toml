@@ -12,5 +12,6 @@ solana-commitment-config = "=3.0.0"
 solana-keypair = "=3.1.2"
 solana-message = "=3.0.1"
 solana-rpc-client = { version = "=3.1.14", default-features = false }
+solana-rpc-client-api = "=3.1.14"
 solana-signer = "=3.0.0"
 solana-transaction = "=3.0.2"

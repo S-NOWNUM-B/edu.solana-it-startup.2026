@@ -2115,6 +2115,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "litesvm",
+ "solana-account",
  "solana-keypair",
  "solana-message",
  "solana-signer",
@@ -5434,6 +5435,7 @@ dependencies = [
  "solana-keypair",
  "solana-message",
  "solana-rpc-client",
+ "solana-rpc-client-api",
  "solana-signer",
  "solana-transaction",
 ]

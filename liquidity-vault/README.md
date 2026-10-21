@@ -10,6 +10,7 @@ DeFi-vault на Anchor 1.1.2 и Rust. Пользователи вносят SNTO
 | 9 | депозит и share-токены | [раздел](#неделя-9) |
 | 10 | CPI и вывод | [раздел](#неделя-10) |
 | 11 | AMM и концентрированная ликвидность | [раздел](#неделя-11) |
+| 12 | swap через Raydium | [раздел](#неделя-12) |
 
 ## Структура и запуск
 
@@ -248,3 +249,68 @@ Raydium упорядочивает mint'ы по байтам адреса: в п
 - **Чем концентрированная ликвидность отличается от простого пула?** В простом пуле деньги распределены по всем ценам и почти все лежат без дела. В CLMM они работают только в выбранном диапазоне, поэтому с той же суммы получается больше комиссий.
 - **Что происходит с позицией, когда цена выходит за диапазон?** Она перестаёт участвовать в обменах и зарабатывать и целиком превращается в один токен: выше верхней границы — в дорожающий токен уже продан, ниже нижней — позиция скупила дешевеющий.
 - **Почему узкий диапазон зарабатывает больше, но требует больше внимания?** Та же ликвидность сосредоточена на меньшем числе тиков, и доля комиссий с каждого обмена больше. Но цена чаще выходит за границы, и позицию приходится переставлять.
+
+---
+
+## Неделя 12
+
+**Swap через raydium**
+
+Учит vault обменивать токены через свой CLMM-пул. Технически это тот же CPI, что на неделе 10: программа vault вызывает Raydium `swap_v2` и подписывает обмен от имени `VaultState` PDA.
+
+### Стратегия и второе хранилище
+
+| Аккаунт | Seeds | Владелец | Что хранит |
+| :-- | :-- | :-- | :-- |
+| `Strategy` | `["strategy", vault]` | программа vault | пул Raydium, второй токен, второе хранилище, NFT открытой позиции vault |
+| Второе хранилище | `["second_tokens", vault]` | Token Program, authority — `VaultState` | второй токен пула |
+
+`init_strategy` вызывает только админ, один раз. Программа проверяет, что пул принадлежит Raydium CLMM, имеет discriminator `PoolState` и содержит SNTOK и второй токен (`PoolMintMismatch`). Отдельный аккаунт оставляет `VaultState` в прежнем layout: vault в devnet уже создан.
+
+`swap(amount_in, minimum_amount_out, sell_vault_token)`:
+
+- только админ (`has_one = admin`) и только через пул стратегии (`WrongPool`);
+- токены входа и выхода — хранилища vault, админ не может направить обмен на свой кошелёк;
+- CPI `swap_v2` собирается вручную ([`raydium.rs`](programs/liquidity-vault/src/raydium.rs)) и подписывается seeds vault PDA; bitmap-расширение и tick-массивы пула передаются как remaining accounts;
+- `minimum_amount_out` защищает от slippage: Raydium отменяет обмен с ошибкой 6018 `TooLittleOutputReceived`, а программа дополнительно сверяет полученную сумму после CPI.
+
+Ожидаемую сумму клиент берёт из simulation той же инструкции с нулевым минимумом: RPC возвращает состояние выходного хранилища после обмена. Затем минимум ставится на 1% ниже ожидаемого (`--slippage-bps 100`).
+
+```bash
+# Подключить пул и создать второе хранилище
+cargo run -p vault-client --locked -- strategy
+# Vault продаёт 100 SNTOK, минимум = ожидаемое - 1%
+cargo run -p vault-client --locked -- vault-swap --direction sell --amount 100
+# Минимум вдвое выше ожидаемого: транзакция уходит без preflight и отклоняется Raydium
+cargo run -p vault-client --locked -- vault-swap --direction sell --amount 50 --reject
+# Обратный обмен: 50 второго токена -> SNTOK
+cargo run -p vault-client --locked -- vault-swap --direction buy --amount 50
+```
+
+### Результаты в devnet
+
+| Что | Ссылка |
+| :-- | :-- |
+| Strategy | [D1Ve…LraZu](https://explorer.solana.com/address/D1VehnSHMWzR2P1hZbWkqX3DyzjZYR1aivBD1xSLraZu?cluster=devnet) |
+| Второе хранилище | [6PCJ…JWhc](https://explorer.solana.com/address/6PCJ1kToMrcCMSskDXujdxzGMVJwyv91G4DMfaFqJWhc?cluster=devnet) |
+| `init_strategy` | [транзакция](https://explorer.solana.com/tx/4kwe6fUA6foz8N7pgmBX6vKhEXsG9CdZCkQiso9JitVMEsV63SkS2m6oTj6Ym8yrvTqPok1ZqNr9gDX72V6dcWCU?cluster=devnet) |
+| **Успешный swap: 100 SNTOK → 199.307636 второго токена** (минимум 197.314559) | [транзакция](https://explorer.solana.com/tx/68z7FPPShbdAL8bCCQe5UcRt2ody7mW3DWdKNHfSxwunBFnVfqdN5jjG4jtD7K5mKLvtfxndk5VdVYki1YFw8ka?cluster=devnet) |
+| **Отклонённый из-за slippage:** ожидалось 99.509753, минимум 199.019506 | [транзакция](https://explorer.solana.com/tx/5dU3WPW6BdxgLYv5GBvv9CkyMNCtGebWiSLJhCdPPnKei72bR1rfRWFAPCUErh6ZN2cetJNS5zP8wEHJvekDnLut?cluster=devnet) — ошибка 6018 (`0x1782`), балансы vault не изменились |
+| Обратный swap: 50 второго токена → 24.979627 SNTOK | [транзакция](https://explorer.solana.com/tx/Dhq8iVUEASBtfpFAQeJHEGTfYKwfZRY1JmhsLDzkNePiwHmmRqxifvZTgGCSFbcrByidMk8R2ZK7h6u8vYmA4Fg?cluster=devnet) |
+
+**Как изменилась цена пула после продажи 100 SNTOK:**
+
+| | Цена | В vault |
+| :-- | :-- | :-- |
+| До | 2.000000 второго токена за SNTOK | 600 SNTOK + 0 второго токена |
+| После | **1.996145** (−0.193%) | 500 SNTOK + 199.307636 второго токена |
+
+Vault продал SNTOK в пул, SNTOK в пуле стало больше, и он подешевел. Получено 199.31, а не 200: часть забрала комиссия 0.25%, часть — сдвиг цены по ходу обмена. После обратного обмена цена поднялась до 1.997109.
+
+Share-курс считается по балансу основного хранилища SNTOK. Упрощение методички: перед выводом пользователей админ меняет второй токен обратно в SNTOK.
+
+### Проверьте себя
+
+- **Что такое slippage и как от него защищаются?** Разница между ожидаемой и фактической ценой обмена: пока транзакция идёт в сеть, другие меняют цену. Защита — минимальная сумма на выходе; если пул отдаёт меньше, обмен отменяется целиком.
+- **Почему цена сдвигается сильнее, если около текущей цены мало ликвидности?** Обмен проходит по тикам, пока не наберёт сумму. Чем меньше ликвидности рядом, тем больше тиков он пройдёт и тем дальше уйдёт цена.
+- **Почему обмен подписывает программа, а не администратор?** Токены лежат в хранилищах vault, их authority — PDA. Админ только разрешает действие, а отдать токены может программа, и только через пул стратегии.

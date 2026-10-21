@@ -5,3 +5,4 @@
 - PDA: `["vault", token_mint]` — VaultState и authority хранилищ и share mint; `["vault_tokens", vault]`, `["share_mint", vault]`, `["user_card", vault, user]`. Не меняйте seeds и порядок полей существующих аккаунтов: vault уже создан в devnet.
 - SBF собирайте `cargo-build-sbf` из Solana 3.1.10 (`~/.local/share/solana/install/releases/3.1.10/solana-release/bin`): сборка 4.x не исполняется в LiteSVM 0.10. Деплой в локальный валидатор 3.1.10 выполняйте тем же `solana`.
 - Клиент пишет только в devnet или localnet (проверка genesis), всегда выполняет simulation и читает итоговое состояние через RPC.
+- Raydium CLMM вызывается ручным CPI (`programs/liquidity-vault/src/raydium.rs`, `clients/vault-client/src/raydium.rs` внутри `liquidity-vault/`): крейт Raydium закреплён на другой версии Anchor. Порядок аккаунтов и discriminator'ы сверяйте с `raydium-io/raydium-clmm`; ожидаемую сумму swap клиент берёт из simulation.

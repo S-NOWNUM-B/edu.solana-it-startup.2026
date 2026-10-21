@@ -10,4 +10,12 @@ pub enum VaultError {
     MathOverflow,
     #[msg("Not enough share tokens")]
     InsufficientShares,
+    #[msg("Account is not a Raydium CLMM pool")]
+    NotRaydiumPool,
+    #[msg("Pool must contain the vault token and the second token")]
+    PoolMintMismatch,
+    #[msg("Only the strategy pool is allowed")]
+    WrongPool,
+    #[msg("Received less than the minimum amount")]
+    SlippageExceeded,
 }

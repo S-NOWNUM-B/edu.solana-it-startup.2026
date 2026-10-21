@@ -11,6 +11,8 @@ pub const CLMM_PROGRAM: Pubkey =
 /// Конфиг devnet: индекс 0, комиссия 0.25%, шаг тиков 60.
 pub const AMM_CONFIG: Pubkey =
     Pubkey::from_str_const("CD4aJtX11cqTCAc83nxSPkkh5JW2yjD6uwHeovjqQ1qu");
+pub const MEMO_PROGRAM: Pubkey =
+    Pubkey::from_str_const("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const COMPUTE_BUDGET_PROGRAM: Pubkey =
     Pubkey::from_str_const("ComputeBudget111111111111111111111111111111");
 const TOKEN_PROGRAM: Pubkey = anchor_spl::token::ID;
@@ -122,6 +124,7 @@ pub struct Pool {
     pub mint_1: Pubkey,
     pub vault_0: Pubkey,
     pub vault_1: Pubkey,
+    pub observation: Pubkey,
     pub decimals_0: u8,
     pub decimals_1: u8,
     pub tick_spacing: u16,
@@ -141,6 +144,7 @@ impl Pool {
             mint_1: read_pubkey(data, 105),
             vault_0: read_pubkey(data, 137),
             vault_1: read_pubkey(data, 169),
+            observation: read_pubkey(data, 201),
             decimals_0: data[233],
             decimals_1: data[234],
             tick_spacing: u16::from_le_bytes([data[235], data[236]]),
@@ -162,6 +166,42 @@ impl Pool {
     pub fn price(&self) -> f64 {
         let sqrt = self.sqrt_price_x64 as f64 / 2_f64.powi(64);
         sqrt * sqrt / 10_f64.powi(self.decimals_1 as i32 - self.decimals_0 as i32)
+    }
+
+    /// Хранилище пула для mint.
+    pub fn vault_for(&self, mint: &Pubkey) -> Pubkey {
+        if *mint == self.mint_0 {
+            self.vault_0
+        } else {
+            self.vault_1
+        }
+    }
+
+    /// Remaining accounts swap_v2: bitmap-расширение и существующие tick-массивы
+    /// по направлению обмена, начиная с текущего.
+    pub fn swap_remaining(&self, client: &Client, zero_for_one: bool) -> Result<Vec<AccountMeta>> {
+        let span = TICK_ARRAY_SIZE * i32::from(self.tick_spacing);
+        let start = tick_array_start(self.tick_current, self.tick_spacing);
+        let step = if zero_for_one { -span } else { span };
+        let candidates: Vec<_> = (0..4)
+            .map(|i| tick_array(&self.address, start + step * i))
+            .collect();
+        let accounts = client.rpc.get_multiple_accounts(&candidates)?;
+        let mut remaining = vec![AccountMeta::new_readonly(
+            bitmap_extension(&self.address),
+            false,
+        )];
+        remaining.extend(
+            candidates
+                .into_iter()
+                .zip(accounts)
+                .filter(|(_, account)| account.is_some())
+                .map(|(address, _)| AccountMeta::new(address, false)),
+        );
+        if remaining.len() == 1 {
+            return fail("Pool has no initialized tick arrays near the current price");
+        }
+        Ok(remaining)
     }
 }
 

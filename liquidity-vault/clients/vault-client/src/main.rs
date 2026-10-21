@@ -1,6 +1,7 @@
 mod pool;
 mod raydium;
 mod rpc;
+mod strategy;
 mod vault;
 
 use anchor_lang::prelude::Pubkey;
@@ -17,6 +18,7 @@ const QUOTE_MINT: Option<&str> = Some("YkBaLgL7tK1ffq3vrb5qXqeJZ1rk6LpHSqZvgDXso
 const USAGE: &str = "Liquidity Vault client\n\
 Usage: vault-client <command> [--url <RPC_URL>] [--keypair <PATH>] [--mint <PUBKEY>] [--amount <TOKENS>]\n\
        [--quote-mint <PUBKEY>] [--price <QUOTE_PER_SNTOK>] [--range <PERCENT>] [--position <NFT_MINT>]\n\
+       [--direction sell|buy] [--slippage-bps <1..1000>] [--reject]\n\
 Commands:\n\
   init     create VaultState, vault token account and share mint (admin)\n\
   card     create the user card of the wallet\n\
@@ -27,6 +29,9 @@ Commands:\n\
   create-pool    --price <P>: create Raydium CLMM pool SNTOK/second token\n\
   open-position  --range <PCT> --amount <SECOND_TOKEN>: wallet position around the price\n\
   pool           [--position <NFT_MINT>]: read pool price, liquidity and a position\n\
+  strategy       connect the pool to the vault and create the second vault token account (admin)\n\
+  vault-swap     --direction sell|buy --amount <TOKENS> [--slippage-bps 100] [--reject]:\n\
+                 swap vault tokens through the pool; --reject doubles the minimum to show a rejection\n\
 Defaults: Solana devnet, ../.keys/devnet-payer.json, SNTOK mint";
 
 const COMMANDS: &[&str] = &[
@@ -39,6 +44,8 @@ const COMMANDS: &[&str] = &[
     "create-pool",
     "open-position",
     "pool",
+    "strategy",
+    "vault-swap",
 ];
 
 struct Options {
@@ -51,6 +58,9 @@ struct Options {
     price: Option<String>,
     range: Option<String>,
     position: Option<Pubkey>,
+    direction: Option<String>,
+    slippage_bps: u64,
+    reject: bool,
 }
 
 fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Options>> {
@@ -68,8 +78,15 @@ fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Option
         price: None,
         range: None,
         position: None,
+        direction: None,
+        slippage_bps: 100,
+        reject: false,
     };
     while let Some(option) = args.next() {
+        if option == "--reject" {
+            options.reject = true;
+            continue;
+        }
         let Some(value) = args.next() else {
             return fail(format!("Missing value for {option}"));
         };
@@ -82,6 +99,8 @@ fn parse_options(args: impl IntoIterator<Item = String>) -> Result<Option<Option
             "--price" => options.price = Some(value),
             "--range" => options.range = Some(value),
             "--position" => options.position = Some(value.parse()?),
+            "--direction" => options.direction = Some(value),
+            "--slippage-bps" => options.slippage_bps = value.parse()?,
             _ => return fail(format!("Unknown option: {option}")),
         }
     }
@@ -126,6 +145,16 @@ fn run() -> Result<()> {
             &amount()?,
         ),
         "pool" => pool::show(&client, &pair()?, options.position),
+        "strategy" => strategy::init(&client, &addresses, &pair()?),
+        "vault-swap" => strategy::swap(
+            &client,
+            &addresses,
+            &pair()?,
+            &required(&options.direction, "direction")?,
+            &amount()?,
+            options.slippage_bps,
+            options.reject,
+        ),
         _ => vault::show(&client, &addresses),
     }
 }
