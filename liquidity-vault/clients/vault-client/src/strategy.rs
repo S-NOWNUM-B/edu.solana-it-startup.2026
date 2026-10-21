@@ -26,7 +26,7 @@ pub fn load(client: &Client, addresses: &Addresses) -> Result<Strategy> {
         .ok_or_else(|| "Strategy does not exist; run strategy".into())
 }
 
-fn token_amount(data: &[u8]) -> Result<u64> {
+pub fn token_amount(data: &[u8]) -> Result<u64> {
     let bytes = data
         .get(TOKEN_AMOUNT_OFFSET..TOKEN_AMOUNT_OFFSET + 8)
         .ok_or("Invalid token account")?;

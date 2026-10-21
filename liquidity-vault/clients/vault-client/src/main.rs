@@ -1,4 +1,5 @@
 mod pool;
+mod position;
 mod raydium;
 mod rpc;
 mod strategy;
@@ -32,6 +33,12 @@ Commands:\n\
   strategy       connect the pool to the vault and create the second vault token account (admin)\n\
   vault-swap     --direction sell|buy --amount <TOKENS> [--slippage-bps 100] [--reject]:\n\
                  swap vault tokens through the pool; --reject doubles the minimum to show a rejection\n\
+  position-open    --range <PCT> --amount <SECOND_TOKEN>: vault position around the price (admin)\n\
+  position-collect collect position fees into the vault (admin)\n\
+  position-close   [--slippage-bps 100]: withdraw all liquidity and close the position (admin)\n\
+  rebalance        --range <PCT> --amount <SECOND_TOKEN>: close and reopen around the current price\n\
+  position         read the vault position\n\
+  trade            --direction sell|buy --amount <TOKENS>: wallet swap in the pool as an outside trader\n\
 Defaults: Solana devnet, ../.keys/devnet-payer.json, SNTOK mint";
 
 const COMMANDS: &[&str] = &[
@@ -46,6 +53,12 @@ const COMMANDS: &[&str] = &[
     "pool",
     "strategy",
     "vault-swap",
+    "position-open",
+    "position-collect",
+    "position-close",
+    "rebalance",
+    "position",
+    "trade",
 ];
 
 struct Options {
@@ -154,6 +167,34 @@ fn run() -> Result<()> {
             &amount()?,
             options.slippage_bps,
             options.reject,
+        ),
+        "position-open" => position::open(
+            &client,
+            &addresses,
+            &pair()?,
+            &required(&options.range, "range")?,
+            &amount()?,
+        ),
+        "position-collect" => position::collect(&client, &addresses, &pair()?),
+        "position-close" => position::close(&client, &addresses, &pair()?, options.slippage_bps),
+        "rebalance" => {
+            let pair = pair()?;
+            position::close(&client, &addresses, &pair, options.slippage_bps)?;
+            position::open(
+                &client,
+                &addresses,
+                &pair,
+                &required(&options.range, "range")?,
+                &amount()?,
+            )
+        }
+        "position" => position::show(&client, &addresses, &pair()?),
+        "trade" => position::trade(
+            &client,
+            &pair()?,
+            &required(&options.direction, "direction")?,
+            &amount()?,
+            options.slippage_bps,
         ),
         _ => vault::show(&client, &addresses),
     }

@@ -20,6 +20,7 @@ const TOKEN_2022_PROGRAM: Pubkey = anchor_spl::token_2022::ID;
 const TICK_ARRAY_SIZE: i32 = 60;
 const POOL_DISCRIMINATOR: [u8; 8] = [247, 237, 227, 245, 215, 195, 222, 70];
 const POSITION_DISCRIMINATOR: [u8; 8] = [70, 111, 150, 126, 230, 15, 25, 117];
+const SWAP_V2: [u8; 8] = [43, 4, 237, 11, 26, 201, 30, 98];
 const CREATE_POOL: [u8; 8] = [233, 146, 209, 142, 207, 104, 64, 188];
 const OPEN_POSITION_WITH_TOKEN22_NFT: [u8; 8] = [77, 255, 174, 82, 125, 29, 201, 46];
 
@@ -117,6 +118,10 @@ fn read_i32(data: &[u8], offset: usize) -> i32 {
     i32::from_le_bytes(data[offset..offset + 4].try_into().unwrap())
 }
 
+fn read_u64(data: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap())
+}
+
 /// Нужные поля PoolState (zero-copy, packed).
 pub struct Pool {
     pub address: Pubkey,
@@ -212,6 +217,8 @@ pub struct Position {
     pub tick_lower: i32,
     pub tick_upper: i32,
     pub liquidity: u128,
+    pub fees_owed_0: u64,
+    pub fees_owed_1: u64,
 }
 
 impl Position {
@@ -234,6 +241,8 @@ impl Position {
             tick_lower: read_i32(&data, 73),
             tick_upper: read_i32(&data, 77),
             liquidity: read_u128(&data, 81),
+            fees_owed_0: read_u64(&data, 129),
+            fees_owed_1: read_u64(&data, 137),
         }))
     }
 }
@@ -277,6 +286,47 @@ pub fn create_pool(
             AccountMeta::new_readonly(anchor_lang::system_program::ID, false),
             AccountMeta::new_readonly(anchor_lang::prelude::rent::ID, false),
         ],
+        data,
+    }
+}
+
+/// swap_v2 с кошелька: используется как обмен стороннего трейдера.
+#[allow(clippy::too_many_arguments)]
+pub fn swap_v2(
+    payer: Pubkey,
+    pool: &Pool,
+    input_account: Pubkey,
+    output_account: Pubkey,
+    input_mint: Pubkey,
+    output_mint: Pubkey,
+    remaining: &[AccountMeta],
+    amount_in: u64,
+    minimum_amount_out: u64,
+) -> Instruction {
+    let mut data = SWAP_V2.to_vec();
+    data.extend_from_slice(&amount_in.to_le_bytes());
+    data.extend_from_slice(&minimum_amount_out.to_le_bytes());
+    data.extend_from_slice(&0_u128.to_le_bytes());
+    data.push(1);
+    let mut accounts = vec![
+        AccountMeta::new_readonly(payer, true),
+        AccountMeta::new_readonly(AMM_CONFIG, false),
+        AccountMeta::new(pool.address, false),
+        AccountMeta::new(input_account, false),
+        AccountMeta::new(output_account, false),
+        AccountMeta::new(pool.vault_for(&input_mint), false),
+        AccountMeta::new(pool.vault_for(&output_mint), false),
+        AccountMeta::new(pool.observation, false),
+        AccountMeta::new_readonly(TOKEN_PROGRAM, false),
+        AccountMeta::new_readonly(TOKEN_2022_PROGRAM, false),
+        AccountMeta::new_readonly(MEMO_PROGRAM, false),
+        AccountMeta::new_readonly(input_mint, false),
+        AccountMeta::new_readonly(output_mint, false),
+    ];
+    accounts.extend_from_slice(remaining);
+    Instruction {
+        program_id: CLMM_PROGRAM,
+        accounts,
         data,
     }
 }

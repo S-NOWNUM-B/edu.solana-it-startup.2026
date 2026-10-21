@@ -13,7 +13,12 @@ pub const CLMM_PROGRAM_ID: Pubkey =
 pub const MEMO_PROGRAM_ID: Pubkey =
     Pubkey::from_str_const("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const POOL_DISCRIMINATOR: [u8; 8] = [247, 237, 227, 245, 215, 195, 222, 70];
+const POSITION_DISCRIMINATOR: [u8; 8] = [70, 111, 150, 126, 230, 15, 25, 117];
 pub const SWAP_V2: [u8; 8] = [43, 4, 237, 11, 26, 201, 30, 98];
+pub const OPEN_POSITION_WITH_TOKEN22_NFT: [u8; 8] = [77, 255, 174, 82, 125, 29, 201, 46];
+pub const INCREASE_LIQUIDITY_V2: [u8; 8] = [133, 29, 89, 223, 69, 238, 176, 10];
+pub const DECREASE_LIQUIDITY_V2: [u8; 8] = [58, 127, 188, 62, 79, 82, 196, 96];
+pub const CLOSE_POSITION: [u8; 8] = [123, 134, 81, 0, 49, 68, 98, 98];
 
 /// Mint'ы пула из PoolState после проверки владельца и discriminator.
 pub fn pool_mints(pool: &AccountInfo) -> Result<[Pubkey; 2]> {
@@ -26,6 +31,17 @@ pub fn pool_mints(pool: &AccountInfo) -> Result<[Pubkey; 2]> {
     let mint =
         |offset: usize| Pubkey::new_from_array(data[offset..offset + 32].try_into().unwrap());
     Ok([mint(73), mint(105)])
+}
+
+/// Ликвидность из PersonalPositionState после проверки владельца и discriminator.
+pub fn position_liquidity(position: &AccountInfo) -> Result<u128> {
+    require_keys_eq!(*position.owner, CLMM_PROGRAM_ID, VaultError::WrongPosition);
+    let data = position.try_borrow_data()?;
+    require!(
+        data.len() >= 97 && data[..8] == POSITION_DISCRIMINATOR,
+        VaultError::WrongPosition
+    );
+    Ok(u128::from_le_bytes(data[81..97].try_into().unwrap()))
 }
 
 /// Аккаунт инструкции Raydium и его права в CPI.

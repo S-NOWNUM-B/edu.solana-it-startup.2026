@@ -11,6 +11,7 @@ DeFi-vault на Anchor 1.1.2 и Rust. Пользователи вносят SNTO
 | 10 | CPI и вывод | [раздел](#неделя-10) |
 | 11 | AMM и концентрированная ликвидность | [раздел](#неделя-11) |
 | 12 | swap через Raydium | [раздел](#неделя-12) |
+| 13 | позиция в CLMM-пуле | [раздел](#неделя-13) |
 
 ## Структура и запуск
 
@@ -314,3 +315,61 @@ Share-курс считается по балансу основного хра�
 - **Что такое slippage и как от него защищаются?** Разница между ожидаемой и фактической ценой обмена: пока транзакция идёт в сеть, другие меняют цену. Защита — минимальная сумма на выходе; если пул отдаёт меньше, обмен отменяется целиком.
 - **Почему цена сдвигается сильнее, если около текущей цены мало ликвидности?** Обмен проходит по тикам, пока не наберёт сумму. Чем меньше ликвидности рядом, тем больше тиков он пройдёт и тем дальше уйдёт цена.
 - **Почему обмен подписывает программа, а не администратор?** Токены лежат в хранилищах vault, их authority — PDA. Админ только разрешает действие, а отдать токены может программа, и только через пул стратегии.
+
+---
+
+## Неделя 13
+
+**Позиция в clmm-пуле**
+
+Делает vault провайдером ликвидности: он кладёт оба токена в выбранный диапазон пула, **NFT позиции принадлежит vault PDA**, комиссии с обменов приходят в хранилища vault. Адрес NFT открытой позиции хранится в `Strategy`, поэтому у vault одна позиция за раз.
+
+| Инструкция | Кто | CPI в Raydium |
+| :-- | :-- | :-- |
+| `open_position(tick_lower, tick_upper, …, amount_0_max, amount_1_max, base_0)` | только админ | `open_position_with_token22_nft` без ликвидности: ренту платит админ, NFT получает vault; затем `increase_liquidity_v2` подписью vault PDA из хранилищ vault |
+| `collect_fees` | только админ | `decrease_liquidity_v2` с ликвидностью 0: позиция не меняется, Raydium выплачивает накопленные комиссии |
+| `close_position(amount_0_min, amount_1_min)` | только админ | `decrease_liquidity_v2` на всю ликвидность с минимумами против slippage, затем `close_position`: NFT сжигается, рента возвращается vault |
+
+**Почему открытие в два шага.** В `open_position` Raydium один и тот же аккаунт платит за новые аккаунты и отдаёт токены. Vault — PDA с данными и не может быть payer в System Program. Поэтому позиция открывается пустой (Raydium разрешает это при `base_flag = None`), а ликвидность добавляет сам vault.
+
+**Защита.** Токен-аккаунты позиции обязаны быть хранилищами vault (`NotVaultStorage`): админ не может направить токены или комиссии себе. Пул — только пул стратегии (`WrongPool`), позиция — только записанная в стратегии (`WrongPosition`), вторая позиция поверх открытой запрещена (`PositionAlreadyOpen`). Минимумы закрытия клиент берёт из simulation и снижает на 1%.
+
+```bash
+# Позиция vault ±5% вокруг цены: 100 второго токена, SNTOK по пропорции
+cargo run -p vault-client --locked -- position-open --range 5 --amount 100
+# Обмены с кошелька напрямую в пуле — как сторонний трейдер
+cargo run -p vault-client --locked -- trade --direction sell --amount 40
+cargo run -p vault-client --locked -- trade --direction buy --amount 80
+# Забрать комиссии, посмотреть позицию
+cargo run -p vault-client --locked -- position-collect
+cargo run -p vault-client --locked -- position
+# Ребалансировка: закрыть и открыть заново вокруг текущей цены
+cargo run -p vault-client --locked -- rebalance --range 5 --amount 45
+# Закрыть позицию
+cargo run -p vault-client --locked -- position-close
+```
+
+### Сценарий в devnet
+
+| Шаг | Что произошло | Транзакция |
+| :-- | :-- | :-- |
+| 1. Открыть позицию | цена 1.997109 второго токена за SNTOK, диапазон **±5%: 1.900217 … 2.104258**; vault отдал **100 второго токена + 52.58567 SNTOK** | [open](https://explorer.solana.com/tx/3Cyj9pgCiEmSByUDXHZpGb4ajCVrNh2YzzDgbcFkSMRGNgXZnRMvFyVVnTUUNXPZNk6CW8Lp4q8JQHh5tjcGYA5m?cluster=devnet) |
+| 2. Обмены с другого кошелька | продажа 40 SNTOK и покупка SNTOK на 80 второго токена | [sell](https://explorer.solana.com/tx/4d81N4Q4KfwGABeSmAfxDhPHXkAa8DbEck76Ng4da8TjHyXBKYou5ADnVfNpLb5ioxso2oKEaf63kEPivBajhvcb?cluster=devnet), [buy](https://explorer.solana.com/tx/5kzpswowEoK7XU1yCFmMcc2JLkzCdMKyfLJCnfWVkTEDg8ETHNUBWTgpb6T1Fqd8BckwUCms83FA5jeqSumqhKUT?cluster=devnet) |
+| 3. Собрать комиссии | **+0.003247 второго токена, +0.001623 SNTOK** | [collect_fees](https://explorer.solana.com/tx/2DxhRWmoaAFx6sRL9ZCGRZjRFGTzUBCGJHPWgzfUVZtjMiV6FyrPPMturpbXsLVHWRT4uSNeYpeVTiyWwpZLAZdF?cluster=devnet) |
+| 4. Цена ушла из диапазона | продажа 3000 SNTOK: цена **1.888194** ниже границы 1.900217, позиция перестала зарабатывать | [sell 3000](https://explorer.solana.com/tx/5pR37ipWseUaZmHTPe4fUAkZMzcKj2s3zc2oMmbXG8PfAPW1YgwSxhcRm78npofb8jxdDKaiiVB7HB6Tc9qduTse?cluster=devnet) |
+| 5. Ребалансировка: закрыть | вернулось **104.026845 SNTOK + 0 второго токена** | [close](https://explorer.solana.com/tx/yzzL4razgTQAU1yPvqXGZaN5UoqoM9aYGJecsV63ZUx5B3hEWkypRAFPrncTU9kgdDJzDvrJSJUJDZMuKsvNcfj?cluster=devnet) |
+| 6. Ребалансировка: открыть | новый диапазон ±5% вокруг 1.888194: **1.789562 … 1.993647**; vault отдал 45 второго токена + 24.136873 SNTOK | [open](https://explorer.solana.com/tx/PHnvwdgqR53yeZQLBbfQxStDNpexQpJ2PY9vxmoh5kR3QVwz8JJc4K4Yzubv4433SjHDsgA73Z5MLgXxfMTdMLc?cluster=devnet) |
+| 7. Закрыть | вернулось **44.999999 второго токена + 24.136872 SNTOK** (цена не менялась; 1 минимальная единица ушла на округление в пользу пула) | [close](https://explorer.solana.com/tx/5zVAMvh5qtqYr93a2TEb4j3w9JB5PeNnKucZDirierJH9zmbcEuvaPiWJz433xmNUDJhWfWqrZvc6nLWsHLz6xzr?cluster=devnet) |
+
+После сценария позиций у vault нет: в хранилищах 576.422424 SNTOK и 49.310882 второго токена.
+
+- **Комиссии маленькие**: ликвидность позиции vault (2.88·10⁹) — около 2% ликвидности позиции недели 11 (1.46·10¹¹), а комиссия обмена делится между позициями пропорционально ликвидности.
+- **После выхода цены ниже диапазона позиция целиком стала SNTOK**: пока цена падала, трейдеры продавали в неё SNTOK и забирали второй токен. По цене 1.888194 полученные 104.03 SNTOK стоят ≈196.42 второго токена, а просто хранение 100 второго токена + 52.59 SNTOK стоило бы ≈199.29. Разница ≈1.44% — **impermanent loss**, поэтому позицию переставляют вовремя.
+
+Упрощение методички: пока средства в позиции, пользователи их не выводят. Перед выводом админ закрывает позицию и меняет второй токен обратно в SNTOK (`vault-swap --direction buy`).
+
+### Проверьте себя
+
+- **Почему соотношение токенов в позиции зависит от того, где цена внутри диапазона?** Ликвидность — лестница заявок: выше текущей цены позиция держит SNTOK на продажу, ниже — второй токен на покупку. У нижней границы почти всё в SNTOK, у верхней — во втором токене, посередине — примерно поровну по стоимости.
+- **Что будет, если цена уйдёт выше верхней границы?** Весь SNTOK будет продан, позиция станет целиком вторым токеном и перестанет зарабатывать, пока цена не вернётся или позицию не переставят.
+- **Зачем нужна ребалансировка и кто её делает?** Чтобы позиция снова была вокруг цены и получала комиссии. Делает админ vault: закрывает старую позицию и открывает новую; в Kamino и Meteora это автоматизировано.

@@ -48,4 +48,42 @@ pub mod liquidity_vault {
     ) -> Result<()> {
         instructions::swap::handler(ctx, amount_in, minimum_amount_out, sell_vault_token)
     }
+
+    /// Админ открывает позицию vault в диапазоне тиков; NFT позиции принадлежит vault.
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_position<'info>(
+        ctx: Context<'info, VaultPosition<'info>>,
+        tick_lower: i32,
+        tick_upper: i32,
+        tick_array_lower_start: i32,
+        tick_array_upper_start: i32,
+        amount_0_max: u64,
+        amount_1_max: u64,
+        base_0: bool,
+    ) -> Result<()> {
+        instructions::position::open_handler(
+            ctx,
+            tick_lower,
+            tick_upper,
+            tick_array_lower_start,
+            tick_array_upper_start,
+            amount_0_max,
+            amount_1_max,
+            base_0,
+        )
+    }
+
+    /// Админ забирает накопленные комиссии позиции в хранилища vault.
+    pub fn collect_fees<'info>(ctx: Context<'info, VaultPosition<'info>>) -> Result<()> {
+        instructions::position::collect_handler(ctx)
+    }
+
+    /// Админ выводит всю ликвидность не ниже минимумов и закрывает позицию.
+    pub fn close_position<'info>(
+        ctx: Context<'info, VaultPosition<'info>>,
+        amount_0_min: u64,
+        amount_1_min: u64,
+    ) -> Result<()> {
+        instructions::position::close_handler(ctx, amount_0_min, amount_1_min)
+    }
 }

@@ -681,3 +681,120 @@ fn swap_is_allowed_only_for_admin_through_strategy_pool() {
     );
     assert!(!fixture.swap(&admin, other_pool), "pool outside strategy");
 }
+
+impl StrategyFixture {
+    /// Инструкция позиции с поддельными аккаунтами Raydium: отказ должен случиться до CPI.
+    fn position_ix(
+        &self,
+        admin: Pubkey,
+        nft_mint: Pubkey,
+        token_account_0: Pubkey,
+        data: impl InstructionData,
+    ) -> Instruction {
+        let mut ix = vault_ix(
+            liquidity_vault::accounts::VaultPosition {
+                admin,
+                vault: self.base.vault,
+                strategy: self.strategy,
+                clmm_program: CLMM_PROGRAM_ID,
+                pool: self.pool,
+                position_nft_mint: nft_mint,
+                position_nft_account: Keypair::new().pubkey(),
+                personal_position: Keypair::new().pubkey(),
+                protocol_position: Keypair::new().pubkey(),
+                tick_array_lower: Keypair::new().pubkey(),
+                tick_array_upper: Keypair::new().pubkey(),
+                token_account_0,
+                token_account_1: self.second_tokens,
+                token_vault_0: Keypair::new().pubkey(),
+                token_vault_1: Keypair::new().pubkey(),
+                vault_0_mint: self.base.mint,
+                vault_1_mint: self.second_mint,
+                rent: anchor_lang::prelude::rent::ID,
+                system_program: anchor_lang::system_program::ID,
+                token_program: spl_token::ID,
+                token_program_2022: spl_token_2022::ID,
+                associated_token_program: anchor_spl::associated_token::ID,
+                memo_program: MEMO_PROGRAM_ID,
+            },
+            data,
+        );
+        for meta in &mut ix.accounts {
+            if meta.pubkey == nft_mint {
+                meta.is_signer = true;
+            }
+        }
+        ix
+    }
+
+    fn open_data() -> liquidity_vault::instruction::OpenPosition {
+        liquidity_vault::instruction::OpenPosition {
+            tick_lower: -60,
+            tick_upper: 60,
+            tick_array_lower_start: -3_600,
+            tick_array_upper_start: 0,
+            amount_0_max: 1,
+            amount_1_max: 1,
+            base_0: true,
+        }
+    }
+}
+
+#[test]
+fn position_actions_are_admin_only_and_keep_tokens_in_vault_storages() {
+    let mut fixture = StrategyFixture::new();
+    let admin = fixture.base.admin.insecure_clone();
+    assert!(fixture.init(&admin, fixture.pool));
+    let storage = fixture.base.vault_token_account;
+    let nft = Keypair::new();
+
+    let stranger = fixture.base.user();
+    let ix = fixture.position_ix(
+        stranger.pubkey(),
+        nft.pubkey(),
+        storage,
+        StrategyFixture::open_data(),
+    );
+    assert!(
+        !send(&mut fixture.base.svm, &stranger, &[&nft], &[ix]),
+        "not admin"
+    );
+
+    let own_tokens = fixture.base.fund(&admin.pubkey(), 10);
+    let ix = fixture.position_ix(
+        admin.pubkey(),
+        nft.pubkey(),
+        own_tokens,
+        StrategyFixture::open_data(),
+    );
+    assert!(
+        !send(&mut fixture.base.svm, &admin, &[&nft], &[ix]),
+        "admin wallet is not a vault storage"
+    );
+
+    let ix = fixture.position_ix(
+        admin.pubkey(),
+        nft.pubkey(),
+        storage,
+        liquidity_vault::instruction::CollectFees {},
+    );
+    assert!(
+        !send(&mut fixture.base.svm, &admin, &[&nft], &[ix]),
+        "no open position"
+    );
+    let ix = fixture.position_ix(
+        admin.pubkey(),
+        nft.pubkey(),
+        storage,
+        liquidity_vault::instruction::ClosePosition {
+            amount_0_min: 0,
+            amount_1_min: 0,
+        },
+    );
+    assert!(
+        !send(&mut fixture.base.svm, &admin, &[&nft], &[ix]),
+        "no open position"
+    );
+    let strategy: Strategy = read(&fixture.base.svm, &fixture.strategy);
+    assert_eq!(strategy.position_nft_mint, Pubkey::default());
+}

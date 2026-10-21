@@ -18,4 +18,12 @@ pub enum VaultError {
     WrongPool,
     #[msg("Received less than the minimum amount")]
     SlippageExceeded,
+    #[msg("Position token accounts must be the vault storages")]
+    NotVaultStorage,
+    #[msg("Vault already has an open position")]
+    PositionAlreadyOpen,
+    #[msg("Vault has no open position")]
+    NoPosition,
+    #[msg("Position does not belong to the vault strategy")]
+    WrongPosition,
 }
