@@ -13,6 +13,7 @@
 
 ## Содержание
 
+- [Liquidity Vault](#liquidity-vault)
 - [Задание 14 Capstone Build Week](#задание-14-capstone-build-week)
 - [Задание 13 RWA, stablecoins и платежи](#задание-13-rwa-stablecoins-и-платежи)
 - [Задание 11 CPI и composable applications](#задание-11-cpi-и-composable-applications)
@@ -26,6 +27,10 @@
 - [Запуск](#запуск)
 - [Команды клиента](#команды-клиента)
 - [Проверки](#проверки)
+
+## Liquidity Vault
+
+Ветка `task/liquidity-vault` содержит сквозной проект методички «Liquidity Vault»: папка [`liquidity-vault/`](liquidity-vault/) — отдельный Cargo workspace с Anchor-программой и Rust-клиентом. Каждая неделя — отдельный коммит; описание, запуск и ссылки devnet находятся в [README проекта](liquidity-vault/README.md).
 
 ## Задание 14 Capstone Build Week
 

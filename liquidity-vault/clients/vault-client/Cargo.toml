@@ -1,0 +1,16 @@
+[package]
+name = "vault-client"
+version = "0.1.0"
+description = "Rust RPC client for the Liquidity Vault program"
+edition = "2021"
+
+[dependencies]
+anchor-lang = "=1.1.2"
+anchor-spl = { version = "=1.1.2", features = ["associated_token", "token_2022"] }
+liquidity-vault = { path = "../../programs/liquidity-vault", features = ["no-entrypoint"] }
+solana-commitment-config = "=3.0.0"
+solana-keypair = "=3.1.2"
+solana-message = "=3.0.1"
+solana-rpc-client = { version = "=3.1.14", default-features = false }
+solana-signer = "=3.0.0"
+solana-transaction = "=3.0.2"
