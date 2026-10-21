@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="650" viewBox="0 0 1120 650" role="img" aria-labelledby="title desc">
+<title id="title">SNOWNUMB Pay — архитектура продукта</title><desc id="desc">Проектная схема SNOWNUMB Pay</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#555"/></marker></defs>
+<rect width="1120" height="650" fill="white"/>
+<text x="40" y="46" font-family="Arial,sans-serif" font-size="28" font-weight="bold">SNOWNUMB Pay — архитектура продукта</text>
+<path d="M330 165 L415 165" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="350" y="149" font-family="Arial,sans-serif" font-size="17" fill="#444">счёт</text>
+<path d="M705 165 L790 165" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="716" y="149" font-family="Arial,sans-serif" font-size="17" fill="#444">данные</text>
+<path d="M560 235 L560 345" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="574" y="292" font-family="Arial,sans-serif" font-size="17" fill="#444">проверка</text>
+<path d="M705 420 L790 420" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="716" y="405" font-family="Arial,sans-serif" font-size="17" fill="#444">чтение</text>
+<path d="M1080 495 L1080 538 L185 538 L185 495" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="425" y="529" font-family="Arial,sans-serif" font-size="17" fill="#444">USDC</text>
+<path d="M185 100 L185 75 L1095 75 L1095 310 L935 310 L935 345" fill="none" stroke="#777" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="462" y="94" font-family="Arial,sans-serif" font-size="17" fill="#444">подписанная транзакция</text>
+<rect x="40" y="100" width="290" height="135" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="185.0" y="134" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">Клиент</text>
+<text x="185.0" y="166" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Счёт и QR</text>
+<text x="185.0" y="191" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Кошелёк подписывает сам</text>
+<rect x="415" y="100" width="290" height="135" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="560.0" y="134" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">Rust приложение</text>
+<text x="560.0" y="166" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">HTTP API + RPC worker</text>
+<text x="560.0" y="191" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Один процесс</text>
+<rect x="790" y="100" width="290" height="135" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="935.0" y="134" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">PostgreSQL</text>
+<text x="935.0" y="166" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Счета и попытки оплаты</text>
+<text x="935.0" y="191" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Уникальные ограничения</text>
+<rect x="40" y="345" width="290" height="150" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="185.0" y="379" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">Кошелёк продавца</text>
+<text x="185.0" y="411" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Получает USDC напрямую</text>
+<text x="185.0" y="436" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Ключи вне сервиса</text>
+<rect x="415" y="345" width="290" height="150" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="560.0" y="379" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">Solana RPC</text>
+<text x="560.0" y="411" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Поиск по reference</text>
+<text x="560.0" y="436" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Проверка finalized</text>
+<rect x="790" y="345" width="290" height="150" rx="6" fill="#f6f6f6" stroke="#bfbfbf"/>
+<text x="935.0" y="379" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="bold">Solana</text>
+<text x="935.0" y="411" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">SPL Token transfer</text>
+<text x="935.0" y="436" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#333">Истина о переводе</text>
+<text x="40" y="586" font-family="Arial,sans-serif" font-size="19" fill="#444">Сервис не хранит средства и не подписывает платежи.</text>
+<text x="40" y="612" font-family="Arial,sans-serif" font-size="19" fill="#444">Схема описывает проект; развёрнутого платёжного сервиса пока нет.</text>
+</svg>
